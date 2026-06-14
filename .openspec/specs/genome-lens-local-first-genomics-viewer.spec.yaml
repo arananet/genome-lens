@@ -1,0 +1,101 @@
+# Feature Spec — created by scripts/openspec scaffold
+# Fill in all sections before moving status to 'review'.
+# Acceptance criteria are your definition of done — be specific.
+
+title: "genome-lens local-first genomics viewer"
+slug: "genome-lens-local-first-genomics-viewer"
+type: feature
+status: review
+
+author: "Claude"
+created_at: "2026-06-14"
+updated_at: "2026-06-14"
+# Implemented: parser+KB+analysis+2D/3D/reports UI, AI worker, Railway deploy.
+
+roles:
+  implementer: "@arananet"
+  reviewer: "@arananet"
+  qa: "@arananet"
+  product_owner: "@arananet"
+
+description: |
+  A local-first, mobile-friendly personal genomics viewer. The user uploads a
+  raw consumer DNA export (23andMe, AncestryDNA, MyHeritage), which is parsed and
+  analysed entirely in the browser — the raw genome file never leaves the device.
+  The app matches the genome against a static, evidence-tiered knowledge base and
+  presents associations across health/disease, fitness, body composition, and
+  vision through a 2D trace browser, a 3D karyotype, per-variant detail, four
+  tiered reports, and rsid/gene search. An optional, opt-in AI explainer uses
+  Cloudflare Workers AI to render plain-language explanations; it transmits only
+  the single public knowledge-base variant context the user asks about, never the
+  raw genome. The app is responsive (usable on phones) and deploys as a static SPA
+  to Railway. It is an educational tool, not a medical device.
+
+acceptance_criteria:
+  - "Given a 23andMe TSV (#-prefixed headers, rsid/chromosome/position/genotype), when uploaded, then it is auto-detected and normalized to the ParsedGenome schema with source='23andme' and build='GRCh37'."
+  - "Given an AncestryDNA TSV (allele1/allele2 columns), when uploaded, then allele1+allele2 are joined into a single genotype and normalized correctly."
+  - "Given a MyHeritage CSV with ##-metadata headers, quoted fields, and RSID/CHROMOSOME/POSITION/RESULT columns, when uploaded, then it parses, no-call genotypes ('--') are preserved, and a ##method=Low-pass declaration sets method so the UI flags low confidence."
+  - "Given a .zip containing a single supported data file, when uploaded, then it is extracted in-browser (fflate) and parsed."
+  - "Given a file that matches no known schema, when uploaded, then parsing is rejected with a clear error and no partial state is shown."
+  - "Given a parsed genome, when matched against the knowledge base, then only KB entries whose rsid is present are reported, strand-aware against the forward (+) build37 effect allele, and each match carries tier, sources (>=1), and a caveat."
+  - "Given a KB seed SNP that is absent from the uploaded file, when viewing reports, then it is rendered as 'not covered', not as a negative result."
+  - "Given APOE where rs429358 is missing, when viewing the APOE finding, then the genotype is reported as 'indeterminate' rather than inferred."
+  - "Given any report surface, when rendered, then the global educational disclaimer is visible and each finding renders its per-entry caveat."
+  - "Given the vision report, when rendered, then it presents risk variants and protective lifestyle levers only and never promises vision improvement."
+  - "Given parsed data, when viewing the trace browser, then a manhattan-style all-chromosome overview and per-chromosome linear tracks render KB-matched markers colored by category and clicking a marker opens the variant detail."
+  - "Given parsed data, when viewing the 3D karyotype, then 23 banded chromosome meshes render with KB-matched emissive markers (colored by category, sized by tier) using drei OrbitControls, and clicking a marker opens the variant detail."
+  - "Given the search box, when entering an rsid or gene symbol, then matching KB variants present in the genome are listed."
+  - "Given the AI explainer, when the user opts in for a specific variant, then only that variant's public context (rsid, gene, genotype, KB note) is sent to the Cloudflare Worker, never the raw genome, and the consent is explicit per request."
+  - "Given any viewport from 360px wide upward, when using upload, trace, reports, variant detail, and navigation, then the layout is responsive and usable without horizontal scrolling."
+  - "Given a fresh session, when the genome is loaded, then nothing is persisted to localStorage/IndexedDB unless the user enables the explicit 'keep in this browser' opt-in; a visible 'Wipe all data' control clears all in-memory and persisted data in one tap."
+  - "Given a production build, when served, then a Content-Security-Policy is present that forbids outbound connections except the app's own origin and the configured AI worker."
+
+test_plan:
+  - "Unit test (parse/detect): detectFormat returns the correct source for 23andMe, AncestryDNA, and MyHeritage header signatures and 'unknown' otherwise."
+  - "Unit test (parse/23andme): parses a synthetic 23andMe fixture into the expected Variant records and variantCount."
+  - "Unit test (parse/ancestry): joins allele1+allele2 into genotype for a synthetic AncestryDNA fixture."
+  - "Unit test (parse/myheritage): parses quoted CSV with ## headers, preserves '--' no-calls, and detects ##method low-pass into method."
+  - "Unit test (parse/normalizer): byRsid and byChrom maps are built, byChrom sorted by position, build is GRCh37."
+  - "Unit test (parse/zip): a zipped fixture extracts and parses to the same result as the raw fixture."
+  - "Unit test (parse/reject): a non-matching file throws a typed parse error."
+  - "Unit test (kb/strand): reverseComplement and forward-strand comparison helpers behave correctly (A<->T, C<->G)."
+  - "Unit test (kb/loader): knowledge-base.json loads and every entry validates against the KbEntry schema (rsid, category, effectAlleleFwd, tier in A/B/C, >=1 source, non-empty caveats)."
+  - "Unit test (analysis/match): matching a synthetic genome against the KB returns only present rsids with correct genotype interpretation and coverage flags."
+  - "Unit test (analysis/apoe): APOE with rs429358 absent yields an 'indeterminate' result."
+  - "Unit test (analysis/coverage): a low-pass method marks matches with a low-confidence flag; an absent seed SNP is reported as not-covered."
+  - "Integration test (store): loading a parsed genome populates the Zustand store; wipe() clears genome, matches, and persisted IndexedDB state."
+  - "Component test (reports): a report surface renders the global disclaimer and per-finding caveats; the vision report renders no improvement-promise copy."
+
+qa_notes: |
+  Manual QA: load each of the three sample fixtures on a 360px-wide mobile
+  viewport and on desktop. Confirm no raw-file network egress via devtools
+  Network tab (only static asset and, if used, opt-in AI-worker requests appear).
+  Spin the 3D karyotype on a phone for responsiveness/perf. Verify Wipe clears
+  data and reload shows the upload screen.
+
+out_of_scope:
+  - "Any server, account system, or cloud sync of genetic data."
+  - "Ancestry / ethnicity estimation."
+  - "Risk percentages presented as personal prognoses."
+  - "Claims of vision improvement, disease cure, or guaranteed body-composition outcomes."
+  - "Pulling live genomics-API data at runtime using the user's genome."
+  - "Sending the raw genome file to the AI explainer or any remote service."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  Stack: Vite + TypeScript + React 18, Tailwind, three.js via @react-three/fiber
+  + @react-three/drei, visx/d3 for 2D, fflate for zip, Zustand for state, Vitest +
+  Testing Library for tests. Parser must stream-parse (~600k lines < 2s target).
+  The AI explainer is a separate Cloudflare Worker (worker/) proxying Workers AI;
+  the SPA targets it via VITE_AI_WORKER_URL. Static SPA deploys to Railway via
+  railway.json + nixpacks.toml, served from dist/ with `serve`.
+  Local-only constraint (no genome egress) overrides any conflicting requirement.
+
+linked_issues: []
+
+linked_prs: []

@@ -15,9 +15,9 @@ project:
   name: "genome-lens"
   owner: "arananet"
   team: "arananet"
-  domain: "bioinformatics"
-  description: "AI-powered genomics analysis platform that connects to genome databases via Model Context Protocol"
-  tech_stack: "python"
+  domain: "personal-genomics"
+  description: "Local-first personal genomics viewer that surfaces evidence-tiered variant associations across health, fitness, body composition, and vision — entirely in the browser."
+  tech_stack: "typescript, react, vite, tailwind, threejs, cloudflare, vitest"   # comma-separated, e.g. "python, fastapi, docker"
 
 spec:
   required_fields:
@@ -37,7 +37,7 @@ spec:
 
 testing:
   require_tests: true
-  test_command: "pytest"
+  test_command: "npm test"
   coverage_threshold: null
   fail_on_missing_tests: true
 
