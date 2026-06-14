@@ -30,7 +30,7 @@ app.post("/api/explain", async (req, res) => {
     cfRes = await fetch(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiToken}`, "content-type": "application/json" },
-      body: JSON.stringify({ messages: buildMessages(v), max_tokens: 320 }),
+      body: JSON.stringify({ prompt: buildPrompt(v), max_tokens: 320, stream: false }),
     });
   } catch (err) {
     return res.status(502).json({ error: `Network error reaching Cloudflare: ${err.message}` });
@@ -52,22 +52,18 @@ app.get("*", (_req, res) => {
 
 app.listen(PORT, () => console.log(`genome-lens on :${PORT}`));
 
-function buildMessages(v) {
+function buildPrompt(v) {
   return [
-    { role: "system", content: "You explain genetics honestly and never diagnose." },
-    {
-      role: "user",
-      content: [
-        "Explain this genetic variant to a layperson in 3-5 short sentences.",
-        "Educational only, never diagnostic. Do not invent risk statistics.",
-        "Be honest about uncertainty. End with a reminder to confirm actionable findings with a clinician.",
-        "",
-        `Variant: ${v.rsid} in gene ${v.gene}.`,
-        `Category: ${v.category}. Evidence tier: ${v.tier}.`,
-        `Reported genotype: ${v.genotype ?? "not covered"}.`,
-        `Knowledge-base note: ${v.interpretation}`,
-        `Caveat: ${v.caveats}`,
-      ].join("\n"),
-    },
-  ];
+    "You are a science communicator. Explain the following genetic variant to a layperson in 3-5 short sentences.",
+    "Rules: educational only, never diagnostic, no invented statistics, honest about uncertainty.",
+    "End with a reminder to confirm actionable findings with a clinician.",
+    "",
+    `Variant: ${v.rsid} in gene ${v.gene}.`,
+    `Category: ${v.category}. Evidence tier: ${v.tier}.`,
+    `Reported genotype: ${v.genotype ?? "not covered"}.`,
+    `Knowledge-base note: ${v.interpretation}`,
+    `Caveat: ${v.caveats}`,
+    "",
+    "Explanation:",
+  ].join("\n");
 }
