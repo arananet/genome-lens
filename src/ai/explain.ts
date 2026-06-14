@@ -1,8 +1,8 @@
 import type { Finding } from "../analysis/types";
 
-// Endpoint of the Cloudflare Worker that proxies Workers AI. Configured at
-// build time. When unset, the AI explainer is disabled in the UI.
-export const AI_WORKER_URL: string = import.meta.env.VITE_AI_WORKER_URL ?? "";
+// Endpoint that proxies Workers AI. Defaults to /api/explain (served by the
+// Express server on Railway). Override at build time with VITE_AI_WORKER_URL.
+export const AI_WORKER_URL: string = import.meta.env.VITE_AI_WORKER_URL ?? "/api/explain";
 
 export function aiConfigured(): boolean {
   return AI_WORKER_URL.trim().length > 0;
