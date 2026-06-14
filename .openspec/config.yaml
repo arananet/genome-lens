@@ -12,12 +12,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 project:
-  name: "{{PROJECT_NAME}}"
-  owner: "{{GITHUB_OWNER}}"
-  team: "{{TEAM_NAME}}"
-  domain: "{{PROJECT_DOMAIN}}"
-  description: "{{PROJECT_DESCRIPTION}}"
-  tech_stack: "{{TECH_STACK}}"   # comma-separated, e.g. "python, fastapi, docker"
+  name: "genome-lens"
+  owner: "arananet"
+  team: "arananet"
+  domain: "bioinformatics"
+  description: "AI-powered genomics analysis platform that connects to genome databases via Model Context Protocol"
+  tech_stack: "python"
 
 spec:
   required_fields:
@@ -37,7 +37,7 @@ spec:
 
 testing:
   require_tests: true
-  test_command: "{{TEST_COMMAND}}"
+  test_command: "pytest"
   coverage_threshold: null
   fail_on_missing_tests: true
 
@@ -105,7 +105,38 @@ agents:
     data: "data-eng-pro"
     devops: "devops-pro"
     mobile: "mobile-pro"
-    default: null   # null = no domain skill, Claude handles implementation directly
+    bioinformatics: null   # MCP servers handle genome DB access — see genome_databases_mcp below
+    default: null
+
+  genome_databases_mcp:
+    enabled: true
+    suite: "holy-bio-mcp"
+    suite_url: "https://github.com/longevity-genie/holy-bio-mcp"
+    servers:
+      gget:
+        command: "uvx"
+        args: ["gget-mcp"]
+        description: "gget bioinformatics library — Ensembl, NCBI, UCSC, UniProt, BLAST, AlphaFold, COSMIC, CellxGene"
+        databases: [ensembl, ncbi, ucsc, uniprot, alphafold, cosmic, cellxgene]
+        url: "https://github.com/longevity-genie/gget-mcp"
+      biothings:
+        command: "uvx"
+        args: ["biothings-mcp"]
+        description: "BioThings.io APIs — MyGene.info, MyVariant.info, MyChem.info, MyDisease.info"
+        databases: [mygene, myvariant, mychem, mydisease]
+        url: "https://github.com/longevity-genie/biothings-mcp"
+      opengenes:
+        command: "uvx"
+        args: ["opengenes-mcp"]
+        description: "OpenGenes aging and longevity gene database"
+        databases: [opengenes]
+        url: "https://github.com/longevity-genie/opengenes-mcp"
+      synergy_age:
+        command: "uvx"
+        args: ["synergy-age-mcp"]
+        description: "SynergyAge longevity drug synergy database"
+        databases: [synergy_age]
+        url: "https://github.com/longevity-genie/synergy-age-mcp"
 
 hooks:
   pre_commit:

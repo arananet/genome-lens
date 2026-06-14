@@ -1,8 +1,8 @@
-# {{PROJECT_NAME}}
+# genome-lens
 
-{{BADGES}}
+![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white) ![OpenSpec](https://img.shields.io/badge/OpenSpec-enforced-blueviolet) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-> {{PROJECT_DESCRIPTION}}
+> AI-powered genomics analysis platform that connects to genome databases via Model Context Protocol
 
 ---
 
@@ -10,18 +10,35 @@
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/{{GITHUB_OWNER}}/{{PROJECT_NAME}}.git
-cd {{PROJECT_NAME}}
+git clone https://github.com/arananet/genome-lens.git
+cd genome-lens
 bash setup.sh
 
-# 2. Run
-{{TEST_COMMAND}}
+# 2. Install genome database MCP servers (holy-bio-mcp suite)
+pip install uv
+uvx gget-mcp         # Ensembl, NCBI, UCSC, UniProt, BLAST, AlphaFold
+uvx biothings-mcp    # MyGene.info, MyVariant.info, MyChem.info
+uvx opengenes-mcp    # Aging/longevity gene database
+uvx synergy-age-mcp  # Drug synergy database
+
+# 3. Run tests
+pytest
 ```
 
-<!--
-Replace this section with how to actually install and run YOUR project:
-language version, dependencies, env vars, run command, etc.
--->
+---
+
+## Genome Database Agents (MCP)
+
+genome-lens connects to major genomics databases via [Model Context Protocol](https://modelcontextprotocol.io/) servers, configured in `.claude/settings.json`:
+
+| Agent | Databases | Install |
+|---|---|---|
+| **gget** | Ensembl, NCBI, UCSC, UniProt, BLAST, AlphaFold, COSMIC, CellxGene | `uvx gget-mcp` |
+| **biothings** | MyGene.info, MyVariant.info, MyChem.info, MyDisease.info | `uvx biothings-mcp` |
+| **opengenes** | OpenGenes (aging/longevity genes) | `uvx opengenes-mcp` |
+| **synergy-age** | SynergyAge (drug synergy for longevity) | `uvx synergy-age-mcp` |
+
+All four are part of the [holy-bio-mcp](https://github.com/longevity-genie/holy-bio-mcp) suite — free and open source.
 
 ---
 
