@@ -1,4 +1,26 @@
 {
+  "mcpServers": {
+    "gget": {
+      "command": "uvx",
+      "args": ["gget-mcp"],
+      "env": {}
+    },
+    "biothings": {
+      "command": "uvx",
+      "args": ["biothings-mcp"],
+      "env": {}
+    },
+    "opengenes": {
+      "command": "uvx",
+      "args": ["opengenes-mcp"],
+      "env": {}
+    },
+    "synergy-age": {
+      "command": "uvx",
+      "args": ["synergy-age-mcp"],
+      "env": {}
+    }
+  },
   "hooks": {
     "PreToolUse": [
       {
