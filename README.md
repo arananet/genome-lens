@@ -73,8 +73,8 @@ print(answer)
 
 | Variable | Where to find it |
 |---|---|
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → right sidebar |
-| `CLOUDFLARE_AI_TOKEN` | Create at dash.cloudflare.com → My Profile → API Tokens → Workers AI template |
+| `CF_ACCOUNT_ID` | Cloudflare dashboard → right sidebar |
+| `CF_API_TOKEN` | dash.cloudflare.com → My Profile → API Tokens → Workers AI template |
 
 ---
 

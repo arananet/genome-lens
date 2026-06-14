@@ -19,21 +19,21 @@ class TestClientInstantiation:
         assert client.api_token == "tok456"
 
     def test_env_var_credentials(self, monkeypatch):
-        monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "env_acct")
-        monkeypatch.setenv("CLOUDFLARE_AI_TOKEN", "env_tok")
+        monkeypatch.setenv("CF_ACCOUNT_ID", "env_acct")
+        monkeypatch.setenv("CF_API_TOKEN", "env_tok")
         client = CloudflareAIClient()
         assert client.account_id == "env_acct"
         assert client.api_token == "env_tok"
 
     def test_missing_account_id_raises(self, monkeypatch):
-        monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
-        monkeypatch.delenv("CLOUDFLARE_AI_TOKEN", raising=False)
+        monkeypatch.delenv("CF_ACCOUNT_ID", raising=False)
+        monkeypatch.delenv("CF_API_TOKEN", raising=False)
         with pytest.raises(CloudflareAIError, match="account_id is required"):
             CloudflareAIClient()
 
     def test_missing_token_raises(self, monkeypatch):
-        monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
-        monkeypatch.delenv("CLOUDFLARE_AI_TOKEN", raising=False)
+        monkeypatch.setenv("CF_ACCOUNT_ID", "acct")
+        monkeypatch.delenv("CF_API_TOKEN", raising=False)
         with pytest.raises(CloudflareAIError, match="api_token is required"):
             CloudflareAIClient()
 

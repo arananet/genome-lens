@@ -23,11 +23,11 @@ description: |
   models (Llama 3.1, Phi-3, Gemma 3, etc.) accessible via REST API. This lets
   genome-lens run local reasoning over genomic data without cost, complementing
   the holy-bio-mcp database suite already configured. The provider module handles
-  auth via CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN env vars, exposes a simple
+  auth via CF_ACCOUNT_ID + CF_API_TOKEN env vars, exposes a simple
   synchronous `generate()` call, and lists available models.
 
 acceptance_criteria:
-  - "Given valid CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN env vars, when generate() is called with a prompt and model name, then the module returns the text response string from Cloudflare Workers AI."
+  - "Given valid CF_ACCOUNT_ID and CF_API_TOKEN env vars, when generate() is called with a prompt and model name, then the module returns the text response string from Cloudflare Workers AI."
   - "Given an invalid or missing token, when generate() is called, then it raises CloudflareAIError with the HTTP status and error message."
   - "Given no arguments, when list_models() is called, then it returns a list of recommended free-tier model IDs available on Workers AI."
   - "Given the module is imported, when CloudflareAIClient is instantiated with explicit account_id and api_token kwargs, then it uses those values instead of env vars."
@@ -39,7 +39,7 @@ test_plan:
   - "Unit test: call list_models(); assert the return value is a non-empty list of strings each starting with '@cf/'."
 
 qa_notes: |
-  Manual check: set real CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN, run
+  Manual check: set real CF_ACCOUNT_ID + CF_API_TOKEN, run
   `python -c "from providers.cloudflare_ai import CloudflareAIClient; c=CloudflareAIClient(); print(c.generate('Summarise BRCA1 in one sentence.'))"`.
   Expect a non-empty string back within ~5 seconds.
 
