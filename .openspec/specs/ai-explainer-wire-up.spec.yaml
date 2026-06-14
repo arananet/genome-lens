@@ -1,0 +1,82 @@
+# Feature Spec — created by scripts/openspec scaffold
+# Fill in all sections before moving status to 'review'.
+# Acceptance criteria are your definition of done — be specific.
+
+title: "AI Explainer Wire-up: Express server, Oracle badge, friendlier UX"
+slug: "ai-explainer-wire-up"
+type: feature
+status: review
+
+author: "Claude"
+created_at: "2026-06-14"
+updated_at: "2026-06-14"
+
+roles:
+  implementer: "@arananet"
+  reviewer: "@arananet"
+  qa: "@arananet"
+  product_owner: "@arananet"
+
+description: |
+  Three connected changes that make the AI explainer visible and trustworthy:
+
+  1. Express backend on Railway — replace the bare `serve` static server with a
+     small Express server (server.mjs) that still serves dist/ as a static SPA
+     but also exposes POST /api/explain. That endpoint reads CF_ACCOUNT_ID and
+     CF_API_TOKEN from the Railway environment and proxies to Cloudflare Workers
+     AI REST API, keeping credentials out of the browser bundle.
+
+  2. Oracle badge in AiExplainer — before any request is sent, run the Oracle
+     (src/mesh/oracle.ts, pure TypeScript, no Node deps) in the browser against
+     a data-egress action representing the request. Display the verdict (allow /
+     revise / deny) with a coloured badge. Only show the send button when verdict
+     is allow. This makes the governance architecture visible.
+
+  3. Friendlier AiExplainer UX — hide the raw JSON payload behind a collapsed
+     disclosure widget; lead with the Oracle badge and a plain description; show
+     the explanation prominently when received.
+
+acceptance_criteria:
+  - "Given CF_ACCOUNT_ID and CF_API_TOKEN are set in Railway env, when POST /api/explain is called with a valid variant context, then it returns HTTP 200 with { explanation: string }."
+  - "Given the Express server is running, when GET / is requested, then it serves the Vite SPA (dist/index.html)."
+  - "Given a VariantDetail is open, when the AiExplainer mounts, then it shows an Oracle verdict badge (green Allow / amber Revise / red Deny) before the send button."
+  - "Given the Oracle verdict is allow, when the user clicks 'Explain', then the request is sent to /api/explain and the explanation is displayed."
+  - "Given the Oracle verdict is deny or revise, then the send button is hidden and the reason is shown instead."
+  - "Given the AiExplainer, the raw JSON payload is hidden behind a 'show what's sent' disclosure element by default."
+
+test_plan:
+  - "Unit test (mesh/oracle): data-egress of a normal variant context (transmitsGenome absent, JSON body without genotype rsid pattern) returns allow verdict."
+  - "Unit test (mesh/oracle): data-egress with transmitsGenome:true returns deny with local-only invariant."
+  - "Manual QA: on Railway, open a variant detail, verify Oracle badge shows green Allow, click Explain, verify explanation appears within ~10 s."
+
+qa_notes: |
+  Set CF_ACCOUNT_ID and CF_API_TOKEN in Railway env before deploying.
+  In local dev, the /api/explain endpoint does not exist; the error state is shown.
+
+out_of_scope:
+  - "Changing the Cloudflare Worker in worker/ — it remains available for that deployment path."
+  - "Streaming the AI response."
+  - "Server-side logging of variant explanations."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  Oracle imported from src/mesh/oracle.ts directly (not the full mesh index) to
+  avoid tree-shaking failure on memory.ts (node:fs). The data-egress payload body
+  is a JSON string with separate rsid and genotype fields, so looksLikeGenotype
+  (which matches "rs\d+\s*[:=]\s*[ACGT-]{2}") does not trigger.
+
+  CF Workers AI REST endpoint:
+    POST https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/{model}
+    Authorization: Bearer {CF_API_TOKEN}
+    Body: { messages: [...], max_tokens: 320 }
+
+  Node.js 22 (nixpacks) has native fetch — no node-fetch dependency needed.
+  Express serves dist/ as static and falls back to dist/index.html for SPA routes.
+
+linked_issues: []
+linked_prs: []

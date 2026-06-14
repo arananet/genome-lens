@@ -32,6 +32,31 @@ describe("Oracle governance", () => {
     expect(ruling.invariant).toBe("evidence-required");
   });
 
+  it("allows data-egress when transmitsGenome is false and no body is supplied", () => {
+    // Simulates the AiExplainer Oracle pre-check. The AiExplainer sends only
+    // transmitsGenome:false (no raw body) so the heuristic body check doesn't run.
+    const action: AgentAction = {
+      agent: "privacy-warden",
+      kind: "data-egress",
+      summary: "Explain rs9939609 via Cloudflare Workers AI",
+      payload: { transmitsGenome: false },
+    };
+    expect(oracle.rule(action).verdict).toBe("allow");
+  });
+
+  it("denies data-egress when body contains a genotype pattern", () => {
+    // Verifies the heuristic still fires for prose carrying a personal call.
+    const action: AgentAction = {
+      agent: "privacy-warden",
+      kind: "data-egress",
+      summary: "Log event with raw genotype",
+      payload: { transmitsGenome: false, body: "user genotype AA for fitness variant" },
+    };
+    const ruling = oracle.rule(action);
+    expect(ruling.verdict).toBe("deny");
+    expect(ruling.invariant).toBe("local-only");
+  });
+
   it("denies egress of a personal genotype", () => {
     const action: AgentAction = {
       agent: "privacy-warden",
