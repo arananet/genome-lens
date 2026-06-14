@@ -108,6 +108,22 @@ agents:
     bioinformatics: null   # MCP servers handle genome DB access — see genome_databases_mcp below
     default: null
 
+  llm_providers:
+    cloudflare_workers_ai:
+      enabled: true
+      free_tier: true
+      free_neurons_per_day: 10000
+      module: "providers.cloudflare_ai"
+      auth_env_vars:
+        account_id: "CLOUDFLARE_ACCOUNT_ID"
+        api_token: "CLOUDFLARE_AI_TOKEN"
+      default_model: "@cf/meta/llama-3.1-8b-instruct"
+      recommended_models:
+        - "@cf/meta/llama-3.1-8b-instruct"
+        - "@cf/microsoft/phi-3-mini-4k-instruct"
+        - "@cf/google/gemma-3-12b-it"
+      docs: "https://developers.cloudflare.com/workers-ai/"
+
   genome_databases_mcp:
     enabled: true
     suite: "holy-bio-mcp"

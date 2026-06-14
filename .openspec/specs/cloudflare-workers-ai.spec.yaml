@@ -1,0 +1,73 @@
+# Feature Spec — created by scripts/openspec scaffold
+# Fill in all sections before moving status to 'review'.
+# Acceptance criteria are your definition of done — be specific.
+
+title: "Cloudflare Workers AI LLM Provider"
+slug: "cloudflare-workers-ai"
+type: feature
+status: review   # draft | review | approved
+
+author: "Claude"
+created_at: "2026-06-14"
+updated_at: "2026-06-14"
+
+roles:
+  implementer: "@arananet"
+  reviewer: "@arananet"
+  qa: "@arananet"
+  product_owner: "@arananet"
+
+description: |
+  Add Cloudflare Workers AI as a free LLM inference provider for genome-lens.
+  Cloudflare Workers AI offers a free tier (10,000 neurons/day) with open-weight
+  models (Llama 3.1, Phi-3, Gemma 3, etc.) accessible via REST API. This lets
+  genome-lens run local reasoning over genomic data without cost, complementing
+  the holy-bio-mcp database suite already configured. The provider module handles
+  auth via CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN env vars, exposes a simple
+  synchronous `generate()` call, and lists available models.
+
+acceptance_criteria:
+  - "Given valid CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN env vars, when generate() is called with a prompt and model name, then the module returns the text response string from Cloudflare Workers AI."
+  - "Given an invalid or missing token, when generate() is called, then it raises CloudflareAIError with the HTTP status and error message."
+  - "Given no arguments, when list_models() is called, then it returns a list of recommended free-tier model IDs available on Workers AI."
+  - "Given the module is imported, when CloudflareAIClient is instantiated with explicit account_id and api_token kwargs, then it uses those values instead of env vars."
+
+test_plan:
+  - "Unit test: mock httpx.Client.post to return a 200 JSON payload; assert generate() extracts and returns the 'result.response' field."
+  - "Unit test: mock httpx.Client.post to return a 400 JSON payload with 'errors'; assert generate() raises CloudflareAIError with the error text."
+  - "Unit test: instantiate CloudflareAIClient with explicit kwargs; assert client.account_id and client.api_token match the supplied values."
+  - "Unit test: call list_models(); assert the return value is a non-empty list of strings each starting with '@cf/'."
+
+qa_notes: |
+  Manual check: set real CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN, run
+  `python -c "from providers.cloudflare_ai import CloudflareAIClient; c=CloudflareAIClient(); print(c.generate('Summarise BRCA1 in one sentence.'))"`.
+  Expect a non-empty string back within ~5 seconds.
+
+out_of_scope:
+  - "Streaming responses — synchronous single-shot calls only for now."
+  - "Cloudflare AI Gateway (caching proxy) — out of scope for this spec."
+  - "Embedding models — text generation only."
+  - "Cloudflare MCP server for infrastructure (KV, D1, R2) — not related to LLM inference."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  Cloudflare Workers AI REST endpoint:
+    POST https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}
+    Header: Authorization: Bearer {api_token}
+    Body: {"prompt": "<text>"} or {"messages": [...]} for chat models
+
+  Free-tier recommended models for bioinformatics reasoning:
+    @cf/meta/llama-3.1-8b-instruct
+    @cf/microsoft/phi-3-mini-4k-instruct
+    @cf/google/gemma-3-12b-it
+
+  Use httpx (sync) — already a transitive dep of many bioinformatics packages.
+  If httpx is absent, fall back to urllib.request (stdlib only).
+
+linked_issues: []
+linked_prs: []

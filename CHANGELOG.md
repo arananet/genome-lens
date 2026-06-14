@@ -38,6 +38,7 @@ Guidelines:
 - `CONTRIBUTING.md` documents the `roles` block in the spec workflow
 - `CLAUDE.md` Step 5 now instructs Claude to walk users through `roles` during scaffolding
 - `CLAUDE.md` Step 6 now instructs Claude to clean up template-internal specs
+- Cloudflare Workers AI LLM provider (`providers/cloudflare_ai.py`) — free-tier inference (10k neurons/day) with Llama 3.1, Phi-3, Gemma 3 (spec: cloudflare-workers-ai)
 
 ### Changed
 -
