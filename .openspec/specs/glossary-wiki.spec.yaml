@@ -1,0 +1,56 @@
+title: "glossary wiki"
+slug: "glossary-wiki"
+type: feature
+status: review
+
+author: "Eduardo Arana"
+created_at: "2026-06-14"
+updated_at: "2026-06-14"
+
+roles:
+  implementer: "@arananet"
+  reviewer: "@arananet"
+  qa: "@arananet"
+  product_owner: "@arananet"
+
+description: |
+  An in-app Glossary/Wiki that explains the genomics terms used throughout
+  genome-lens in plain language. Content lives as Markdown pages in a
+  Karpathy-style LLM-wiki (wiki/glossary/), bundled into the SPA at build time and
+  rendered with a small dependency-free Markdown renderer. The wiki is the shared
+  memory substrate for the agent mesh, keeping a single source of truth for
+  project knowledge. Reachable before and after a genome is loaded.
+
+acceptance_criteria:
+  - "Given the glossary wiki, when the app loads, then glossary Markdown pages under wiki/glossary/ are bundled and parsed (front-matter term/title/category + body)."
+  - "Given the Wiki tab, when opened, then terms are grouped by category and searchable by term or body text."
+  - "Given a glossary page body, when rendered, then headings, bold, lists, and links render and any raw HTML is escaped (no injection)."
+  - "Given the upload screen with no genome loaded, when the user clicks the glossary link, then the Wiki is reachable and offers a way back to upload."
+  - "Given a rendered link in a glossary page, when external, then it opens with rel=noreferrer noopener."
+
+test_plan:
+  - "Unit test (wiki/glossary): loadGlossary returns >5 pages, includes 'SNP' and 'Evidence tiers', and strips front-matter from the body."
+  - "Unit test (wiki/markdown): renderMarkdown renders headings/bold/lists/links."
+  - "Unit test (wiki/markdown): raw HTML such as a script tag is escaped, not emitted."
+  - "Unit test (wiki/markdown): external links render with rel=noreferrer noopener."
+
+qa_notes: |
+  Manually verify the Wiki tab on a 360px viewport, search filtering, and that the
+  glossary is reachable from the upload screen.
+
+out_of_scope:
+  - "User-editable wiki pages from the browser."
+  - "Storing any genome data in the wiki."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  Markdown is loaded via import.meta.glob (eager, raw). The renderer is a small
+  custom subset (no external Markdown dependency) and HTML-escapes all input first.
+
+linked_issues: []
+linked_prs: []

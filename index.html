@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!--
+      Content-Security-Policy: forbid all outbound connections except the app's
+      own static origin and the configured AI worker (Cloudflare *.workers.dev).
+      The raw genome file is parsed in-browser and never transmitted.
+      For production, prefer setting this as an HTTP response header too.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.workers.dev; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    />
+    <meta name="theme-color" content="#0b1020" />
+    <meta name="description" content="Local-first personal genomics viewer. Educational, not diagnostic." />
+    <title>genome-lens</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
