@@ -25,6 +25,8 @@ navigable view of what is known and what is not:
 - **2D trace browser** — manhattan overview + per-chromosome linear tracks.
 - **3D karyotype** — a navigational layer rendered with three.js.
 - **Four tiered reports** — health/disease, fitness, body composition, vision.
+- **Glossary & wiki** — plain-language genomics definitions, backed by a Markdown
+  LLM-wiki (`wiki/`) that doubles as the agent mesh's memory.
 - **Optional AI explainer** — opt-in plain-language explanations via Cloudflare
   Workers AI. Your raw genome file is **never** sent; see [Privacy](#privacy).
 
@@ -94,6 +96,19 @@ Wrangler and point the SPA at it via `VITE_AI_WORKER_URL`. See
 
 ---
 
+## Architecture: agent mesh, Oracle & LLM-wiki
+
+Development is governed by a small **agent mesh**: specialized agents share a
+Markdown **LLM-wiki** (`wiki/`) as memory and are governed by an **Oracle** that
+enforces the project's non-negotiable invariants (local-only, evidence-tiered,
+educational-not-diagnostic, imputation-honest, no vision-improvement claims).
+
+This harness is development tooling — it is never bundled into the browser app and
+never touches a genome. The glossary pages in `wiki/glossary/` are the only part
+shipped to the SPA. Full design and a diagram: [`docs/AGENT_MESH.md`](docs/AGENT_MESH.md).
+
+---
+
 ## Contributing
 
 This project uses **OpenSpec** for spec-driven development — every feature or
@@ -101,6 +116,10 @@ bugfix starts with a spec under `.openspec/specs/`. See
 [`docs/OPENSPEC.md`](docs/OPENSPEC.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
+
+## Developer
+
+Built by **Eduardo Arana**.
 
 ## License
 

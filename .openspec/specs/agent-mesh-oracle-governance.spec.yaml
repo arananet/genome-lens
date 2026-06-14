@@ -1,0 +1,66 @@
+title: "agent mesh oracle governance"
+slug: "agent-mesh-oracle-governance"
+type: feature
+status: review
+
+author: "Eduardo Arana"
+created_at: "2026-06-14"
+updated_at: "2026-06-14"
+
+roles:
+  implementer: "@arananet"
+  reviewer: "@arananet"
+  qa: "@arananet"
+  product_owner: "@arananet"
+
+description: |
+  A development/governance harness: a mesh of specialized agents that share a
+  Markdown LLM-wiki as memory and are governed by an Oracle which enforces the
+  project's non-negotiable invariants. Every agent action is ruled allow / revise
+  / deny against the charter in wiki/memory/oracle-charter.md before it can be
+  committed. This harness is Node-only tooling — it is never bundled into the
+  browser app and never processes a user's genome; the only shipped wiki content
+  is the glossary.
+
+acceptance_criteria:
+  - "Given a well-formed knowledge-base action (>=1 source + valid tier), when ruled by the Oracle, then the verdict is allow."
+  - "Given a knowledge-base action with no sources or an invalid tier, when ruled, then the verdict is deny under the evidence-required invariant."
+  - "Given a data-egress action carrying a personal genotype, when ruled, then the verdict is deny under the local-only invariant."
+  - "Given report copy containing a personal risk percentage or diagnostic phrasing, when ruled, then the verdict is revise under the no-diagnosis invariant."
+  - "Given vision report copy promising eyesight improvement, when ruled, then the verdict is deny under the no-vision-improvement invariant."
+  - "Given the mesh, when an allowed action is submitted, then it is appended to the wiki decision log; denied actions are not committed."
+  - "Given the WikiMemory store, when reading a glossary page, then front-matter is parsed and the body returned."
+  - "Given the browser app bundle, then no agent-mesh / node:fs code is included."
+
+test_plan:
+  - "Unit test (mesh/oracle): allows a well-formed kb-entry."
+  - "Unit test (mesh/oracle): denies a kb-entry with empty sources (evidence-required)."
+  - "Unit test (mesh/oracle): denies egress of a personal genotype (local-only)."
+  - "Unit test (mesh/oracle): revises risk-percentage / diagnostic report copy (no-diagnosis)."
+  - "Unit test (mesh/oracle): denies vision-improvement promises (no-vision-improvement)."
+  - "Unit test (mesh/memory): reads a glossary page with front-matter parsed from a temp wiki."
+  - "Integration test (mesh): allowed actions are appended to the decision log; denied actions are not."
+
+qa_notes: |
+  The mesh is exercised by automated tests. Manually confirm the production SPA
+  bundle does not import node:fs (build succeeds with DOM-only app code).
+
+out_of_scope:
+  - "Running the mesh inside the browser app."
+  - "Any networked multi-agent runtime or remote model calls from the mesh."
+  - "Storing genome data in agent memory."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  Oracle invariants are implemented as deterministic checks returning the most
+  severe verdict. Memory is plain Markdown via node:fs; the charter and roster live
+  in wiki/memory/. The mesh is never imported by src/App.tsx, so Vite tree-shakes
+  it out of the SPA.
+
+linked_issues: []
+linked_prs: []

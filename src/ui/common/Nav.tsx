@@ -5,6 +5,7 @@ const TABS: { id: View; label: string; icon: string }[] = [
   { id: "karyotype", label: "3D", icon: "🧬" },
   { id: "reports", label: "Reports", icon: "📋" },
   { id: "search", label: "Search", icon: "🔎" },
+  { id: "wiki", label: "Wiki", icon: "📖" },
 ];
 
 // Top bar on desktop, bottom tab bar on mobile.

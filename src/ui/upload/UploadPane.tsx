@@ -4,6 +4,7 @@ import { Disclaimer } from "../common/Disclaimer";
 
 export function UploadPane() {
   const loadFile = useGenomeStore((s) => s.loadFile);
+  const setView = useGenomeStore((s) => s.setView);
   const status = useGenomeStore((s) => s.status);
   const error = useGenomeStore((s) => s.error);
   const fileName = useGenomeStore((s) => s.fileName);
@@ -21,10 +22,22 @@ export function UploadPane() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">genome-lens</h1>
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🧬</span>
+          <h1 className="bg-gradient-to-r from-indigo-300 to-cyan-300 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+            genome-lens
+          </h1>
+        </div>
         <p className="mt-1 text-sm text-white/70">
-          Upload a raw DNA export to explore it privately, in your browser.
+          Upload a raw DNA export to explore it privately, in your browser. Nothing
+          is uploaded.
         </p>
+        <button
+          onClick={() => setView("wiki")}
+          className="mt-2 text-sm text-indigo-300 hover:text-indigo-200"
+        >
+          New to this? Browse the glossary →
+        </button>
       </div>
 
       <div
