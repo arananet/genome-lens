@@ -26,15 +26,15 @@ class CloudflareAIClient:
     """Thin synchronous client for Cloudflare Workers AI text generation."""
 
     def __init__(self, account_id: str | None = None, api_token: str | None = None):
-        self.account_id = account_id or os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
-        self.api_token = api_token or os.environ.get("CLOUDFLARE_AI_TOKEN", "")
+        self.account_id = account_id or os.environ.get("CF_ACCOUNT_ID", "")
+        self.api_token = api_token or os.environ.get("CF_API_TOKEN", "")
         if not self.account_id:
             raise CloudflareAIError(
-                "account_id is required. Set CLOUDFLARE_ACCOUNT_ID or pass account_id=."
+                "account_id is required. Set CF_ACCOUNT_ID or pass account_id=."
             )
         if not self.api_token:
             raise CloudflareAIError(
-                "api_token is required. Set CLOUDFLARE_AI_TOKEN or pass api_token=."
+                "api_token is required. Set CF_API_TOKEN or pass api_token=."
             )
 
     def generate(self, prompt: str, model: str = DEFAULT_MODEL) -> str:

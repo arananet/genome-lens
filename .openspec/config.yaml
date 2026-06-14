@@ -115,8 +115,8 @@ agents:
       free_neurons_per_day: 10000
       module: "providers.cloudflare_ai"
       auth_env_vars:
-        account_id: "CLOUDFLARE_ACCOUNT_ID"
-        api_token: "CLOUDFLARE_AI_TOKEN"
+        account_id: "CF_ACCOUNT_ID"
+        api_token: "CF_API_TOKEN"
       default_model: "@cf/meta/llama-3.1-8b-instruct"
       recommended_models:
         - "@cf/meta/llama-3.1-8b-instruct"
