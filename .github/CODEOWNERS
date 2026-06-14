@@ -4,38 +4,38 @@
 # The LAST matching pattern wins, so order matters: most-specific rules go last.
 #
 # Replace placeholders with real GitHub handles / team slugs before merging:
-#   {{GITHUB_OWNER}}  — org or user that owns the repo
-#   {{TEAM_NAME}}     — maintainer team slug (e.g. core-maintainers)
+#   arananet  — org or user that owns the repo
+#   arananet     — maintainer team slug (e.g. core-maintainers)
 
 # ── Default owners: every file not matched below
-*                               @arananet
+*                               @arananet/arananet
 
 # ── OpenSpec configuration and specs: governance-critical
-/.openspec/                     @arananet
-/.openspec/config.yaml          @arananet
-/.openspec/specs/               @arananet
+/.openspec/                     @arananet/arananet
+/.openspec/config.yaml          @arananet/arananet
+/.openspec/specs/               @arananet/arananet
 
 # ── CI/CD, security workflows, and repo-wide GitHub config
-/.github/                       @arananet
-/.github/workflows/             @arananet
-/.github/CODEOWNERS             @arananet
-/.github/dependabot.yml         @arananet
+/.github/                       @arananet/arananet
+/.github/workflows/             @arananet/arananet
+/.github/CODEOWNERS             @arananet/arananet
+/.github/dependabot.yml         @arananet/arananet
 
 # ── Claude Code skills, hooks, and settings
-/.claude/                       @arananet
+/.claude/                       @arananet/arananet
 
 # ── Git hooks and repo bootstrap
-/hooks/                         @arananet
-/setup.sh                       @arananet
+/hooks/                         @arananet/arananet
+/setup.sh                       @arananet/arananet
 
 # ── Governance documents
-/SECURITY.md                    @arananet
-/CODE_OF_CONDUCT.md             @arananet
-/CONTRIBUTING.md                @arananet
-/LICENSE                        @arananet
+/SECURITY.md                    @arananet/arananet
+/CODE_OF_CONDUCT.md             @arananet/arananet
+/CONTRIBUTING.md                @arananet/arananet
+/LICENSE                        @arananet/arananet
 
 # ── Agent / AI instructions — changes here affect every future contribution
-/CLAUDE.md                      @arananet
-/.github/AGENTS.md              @arananet
-/.github/copilot-instructions.md @arananet
-/.github/agents/                @arananet
+/CLAUDE.md                      @arananet/arananet
+/.github/AGENTS.md              @arananet/arananet
+/.github/copilot-instructions.md @arananet/arananet
+/.github/agents/                @arananet/arananet
