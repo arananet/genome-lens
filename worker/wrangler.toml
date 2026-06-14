@@ -1,0 +1,12 @@
+name = "genome-lens-ai"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Cloudflare Workers AI binding.
+[ai]
+binding = "AI"
+
+# Restrict CORS to your deployed SPA origin(s) in production.
+# Example: "https://genome-lens.up.railway.app"
+[vars]
+ALLOWED_ORIGINS = "*"
