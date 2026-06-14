@@ -1,0 +1,315 @@
+{
+  "version": "2026-06-14",
+  "build": "GRCh37",
+  "orientation": "All effectAlleleFwd values and genotypeInterpretation keys are on the forward (+) GRCh37 strand, to compare directly against 23andMe / AncestryDNA / MyHeritage genotypes. Genotype keys are alphabetically sorted (e.g. 'AG', not 'GA').",
+  "entries": [
+    {
+      "rsid": "rs4680",
+      "gene": "COMT",
+      "category": "pharmacogenomic",
+      "effectAlleleFwd": "A",
+      "genotypeInterpretation": {
+        "AA": "Met/Met (158Met). Lower COMT enzyme activity; associated in some studies with the so-called 'worrier' profile (more dopamine in prefrontal cortex). Effect on real-world behaviour is small.",
+        "AG": "Val/Met heterozygote — intermediate COMT activity.",
+        "GG": "Val/Val (158Val). Higher COMT activity ('warrior' profile in some studies). Small effect."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs4680", "url": "https://www.ncbi.nlm.nih.gov/snp/rs4680" },
+        { "db": "SNPedia", "id": "Rs4680", "url": "https://www.snpedia.com/index.php/Rs4680" }
+      ],
+      "caveats": "COMT 'warrior/worrier' framing is widely overstated. Effects on cognition and stress are small and context-dependent."
+    },
+    {
+      "rsid": "rs762551",
+      "gene": "CYP1A2",
+      "category": "pharmacogenomic",
+      "effectAlleleFwd": "A",
+      "genotypeInterpretation": {
+        "AA": "*1A/*1A — 'fast' caffeine metabolizer in many studies.",
+        "AC": "Intermediate caffeine metabolism.",
+        "CC": "*1F/*1F — 'slow' caffeine metabolizer; some studies link higher intake to cardiovascular risk in slow metabolizers."
+      },
+      "effect": { "metric": "note" },
+      "tier": "C",
+      "sources": [
+        { "db": "dbSNP", "id": "rs762551", "url": "https://www.ncbi.nlm.nih.gov/snp/rs762551" },
+        { "db": "PharmGKB", "id": "rs762551", "url": "https://www.pharmgkb.org/variant/PA166153620" }
+      ],
+      "caveats": "Caffeine response is also driven by smoking, medications, and habitual intake. Limited, sometimes conflicting evidence."
+    },
+    {
+      "rsid": "rs1801133",
+      "gene": "MTHFR",
+      "category": "pharmacogenomic",
+      "effectAlleleFwd": "A",
+      "genotypeInterpretation": {
+        "AA": "677TT — reduced MTHFR enzyme activity (~30% of normal); may modestly raise homocysteine, especially with low folate.",
+        "AG": "677CT — intermediate (~65% activity).",
+        "GG": "677CC — typical enzyme activity."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs1801133", "url": "https://www.ncbi.nlm.nih.gov/snp/rs1801133" },
+        { "db": "SNPedia", "id": "Rs1801133", "url": "https://www.snpedia.com/index.php/Rs1801133" }
+      ],
+      "caveats": "MTHFR testing is not recommended for most people by major genetics bodies (ACMG). Adequate dietary folate generally offsets the effect."
+    },
+    {
+      "rsid": "rs1801131",
+      "gene": "MTHFR",
+      "category": "pharmacogenomic",
+      "effectAlleleFwd": "G",
+      "genotypeInterpretation": {
+        "GG": "1298CC — reduced activity allele (homozygous).",
+        "GT": "1298AC — heterozygous.",
+        "TT": "1298AA — typical activity."
+      },
+      "effect": { "metric": "note" },
+      "tier": "C",
+      "sources": [
+        { "db": "dbSNP", "id": "rs1801131", "url": "https://www.ncbi.nlm.nih.gov/snp/rs1801131" },
+        { "db": "SNPedia", "id": "Rs1801131", "url": "https://www.snpedia.com/index.php/Rs1801131" }
+      ],
+      "caveats": "Interpreted alongside rs1801133. Clinical relevance for the general population is limited."
+    },
+    {
+      "rsid": "rs6265",
+      "gene": "BDNF",
+      "category": "trait",
+      "effectAlleleFwd": "T",
+      "genotypeInterpretation": {
+        "TT": "Met/Met (66Met) — less common; studied in relation to memory and stress response, small effects.",
+        "CT": "Val/Met heterozygote.",
+        "CC": "Val/Val — most common."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs6265", "url": "https://www.ncbi.nlm.nih.gov/snp/rs6265" },
+        { "db": "SNPedia", "id": "Rs6265", "url": "https://www.snpedia.com/index.php/Rs6265" }
+      ],
+      "caveats": "Associations with cognition and mood are modest and inconsistent across populations."
+    },
+    {
+      "rsid": "rs1800497",
+      "gene": "ANKK1/DRD2",
+      "category": "trait",
+      "effectAlleleFwd": "T",
+      "genotypeInterpretation": {
+        "TT": "A1/A1 (Taq1A) — associated with lower striatal D2 receptor density in some studies.",
+        "CT": "A1/A2 heterozygote.",
+        "CC": "A2/A2 — most common."
+      },
+      "effect": { "metric": "note" },
+      "tier": "C",
+      "sources": [
+        { "db": "dbSNP", "id": "rs1800497", "url": "https://www.ncbi.nlm.nih.gov/snp/rs1800497" },
+        { "db": "SNPedia", "id": "Rs1800497", "url": "https://www.snpedia.com/index.php/Rs1800497" }
+      ],
+      "caveats": "Reward/addiction associations are weak and frequently fail to replicate."
+    },
+    {
+      "rsid": "rs429358",
+      "gene": "APOE",
+      "category": "disease-risk",
+      "group": "APOE",
+      "effectAlleleFwd": "C",
+      "genotypeInterpretation": {
+        "TT": "No ε4 from this position.",
+        "CT": "One ε4-contributing C allele.",
+        "CC": "Two ε4-contributing C alleles."
+      },
+      "effect": { "metric": "note" },
+      "tier": "A",
+      "sources": [
+        { "db": "ClinVar", "id": "rs429358", "url": "https://www.ncbi.nlm.nih.gov/clinvar/?term=rs429358" },
+        { "db": "dbSNP", "id": "rs429358", "url": "https://www.ncbi.nlm.nih.gov/snp/rs429358" }
+      ],
+      "caveats": "APOE genotype requires BOTH rs429358 and rs7412. If rs429358 is absent from your file, ε4 status is indeterminate. APOE ε4 raises Alzheimer's risk but is not deterministic. Confirm with a clinical-grade test and discuss with a clinician before acting."
+    },
+    {
+      "rsid": "rs7412",
+      "gene": "APOE",
+      "category": "disease-risk",
+      "group": "APOE",
+      "effectAlleleFwd": "T",
+      "genotypeInterpretation": {
+        "CC": "No ε2 from this position.",
+        "CT": "One ε2-contributing T allele.",
+        "TT": "Two ε2-contributing T alleles."
+      },
+      "effect": { "metric": "note" },
+      "tier": "A",
+      "sources": [
+        { "db": "ClinVar", "id": "rs7412", "url": "https://www.ncbi.nlm.nih.gov/clinvar/?term=rs7412" },
+        { "db": "dbSNP", "id": "rs7412", "url": "https://www.ncbi.nlm.nih.gov/snp/rs7412" }
+      ],
+      "caveats": "APOE ε-genotype is the combination of rs429358 and rs7412. Interpret together, never in isolation. Educational only — not a diagnosis."
+    },
+    {
+      "rsid": "rs6025",
+      "gene": "F5",
+      "category": "disease-risk",
+      "effectAlleleFwd": "A",
+      "genotypeInterpretation": {
+        "GG": "No Factor V Leiden allele detected at this position.",
+        "AG": "Heterozygous Factor V Leiden carrier — increased venous thrombosis risk.",
+        "AA": "Homozygous Factor V Leiden — substantially increased venous thrombosis risk."
+      },
+      "effect": { "metric": "note" },
+      "tier": "A",
+      "sources": [
+        { "db": "ClinVar", "id": "rs6025", "url": "https://www.ncbi.nlm.nih.gov/clinvar/?term=rs6025" },
+        { "db": "dbSNP", "id": "rs6025", "url": "https://www.ncbi.nlm.nih.gov/snp/rs6025" }
+      ],
+      "caveats": "Some arrays report this SNP on the opposite strand (C/T). Confirm any positive with a clinical-grade test before any decision. Risk depends on heterozygous vs homozygous status and other factors."
+    },
+    {
+      "rsid": "rs1800562",
+      "gene": "HFE",
+      "category": "disease-risk",
+      "effectAlleleFwd": "A",
+      "genotypeInterpretation": {
+        "GG": "No C282Y allele detected.",
+        "AG": "C282Y carrier (heterozygous).",
+        "AA": "C282Y homozygous — main genotype associated with hereditary haemochromatosis (iron overload). Penetrance is incomplete."
+      },
+      "effect": { "metric": "note" },
+      "tier": "A",
+      "sources": [
+        { "db": "ClinVar", "id": "rs1800562", "url": "https://www.ncbi.nlm.nih.gov/clinvar/?term=rs1800562" },
+        { "db": "dbSNP", "id": "rs1800562", "url": "https://www.ncbi.nlm.nih.gov/snp/rs1800562" }
+      ],
+      "caveats": "Many C282Y homozygotes never develop clinical iron overload. Confirm with iron studies and a clinical-grade test; discuss with a clinician."
+    },
+    {
+      "rsid": "rs1815739",
+      "gene": "ACTN3",
+      "category": "fitness",
+      "effectAlleleFwd": "T",
+      "genotypeInterpretation": {
+        "CC": "RR — produces alpha-actinin-3; over-represented among power/sprint athletes.",
+        "CT": "RX — intermediate.",
+        "TT": "XX — no functional alpha-actinin-3; more common in endurance contexts."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs1815739", "url": "https://www.ncbi.nlm.nih.gov/snp/rs1815739" },
+        { "db": "SNPedia", "id": "Rs1815739", "url": "https://www.snpedia.com/index.php/Rs1815739" }
+      ],
+      "caveats": "A nudge, not a verdict. Training type, consistency, and recovery dominate athletic outcomes far more than this genotype."
+    },
+    {
+      "rsid": "rs8192678",
+      "gene": "PPARGC1A",
+      "category": "fitness",
+      "effectAlleleFwd": "A",
+      "genotypeInterpretation": {
+        "AA": "Ser/Ser (482Ser) — studied in relation to endurance traits, weak effects.",
+        "AG": "Gly/Ser heterozygote.",
+        "GG": "Gly/Gly."
+      },
+      "effect": { "metric": "note" },
+      "tier": "C",
+      "sources": [
+        { "db": "dbSNP", "id": "rs8192678", "url": "https://www.ncbi.nlm.nih.gov/snp/rs8192678" },
+        { "db": "SNPedia", "id": "Rs8192678", "url": "https://www.snpedia.com/index.php/Rs8192678" }
+      ],
+      "caveats": "Limited and inconsistent evidence. Training dominates."
+    },
+    {
+      "rsid": "rs9939609",
+      "gene": "FTO",
+      "category": "body-composition",
+      "effectAlleleFwd": "A",
+      "genotypeInterpretation": {
+        "AA": "Two copies of the FTO 'A' allele — associated with a small average increase in BMI and appetite.",
+        "AT": "One copy of the 'A' allele — smaller average effect.",
+        "TT": "No 'A' allele at this position."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs9939609", "url": "https://www.ncbi.nlm.nih.gov/snp/rs9939609" },
+        { "db": "GWAS Catalog", "id": "rs9939609", "url": "https://www.ebi.ac.uk/gwas/variants/rs9939609" }
+      ],
+      "caveats": "Real but small effect (roughly a kilogram or so on average per allele in populations). Energy balance, diet quality, sleep, and activity dominate. Not an excuse or a guarantee."
+    },
+    {
+      "rsid": "rs17782313",
+      "gene": "MC4R",
+      "category": "body-composition",
+      "effectAlleleFwd": "C",
+      "genotypeInterpretation": {
+        "CC": "Two copies near MC4R associated with a small average increase in BMI and appetite.",
+        "CT": "One copy — smaller average effect.",
+        "TT": "No risk allele at this position."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs17782313", "url": "https://www.ncbi.nlm.nih.gov/snp/rs17782313" },
+        { "db": "GWAS Catalog", "id": "rs17782313", "url": "https://www.ebi.ac.uk/gwas/variants/rs17782313" }
+      ],
+      "caveats": "Small effect on average body weight. Lifestyle factors dominate. You may find appetite regulation slightly harder, not destiny."
+    },
+    {
+      "rsid": "rs634990",
+      "gene": "GJD2",
+      "category": "vision",
+      "effectAlleleFwd": "C",
+      "genotypeInterpretation": {
+        "CC": "Two copies of the myopia-associated allele near GJD2.",
+        "CT": "One copy of the myopia-associated allele.",
+        "TT": "No myopia-associated allele at this position."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs634990", "url": "https://www.ncbi.nlm.nih.gov/snp/rs634990" },
+        { "db": "GWAS Catalog", "id": "rs634990", "url": "https://www.ebi.ac.uk/gwas/variants/rs634990" }
+      ],
+      "caveats": "Common-variant myopia risk is highly polygenic; any single SNP explains very little. More daylight/outdoor time in childhood is a protective factor against myopia progression."
+    },
+    {
+      "rsid": "rs1061170",
+      "gene": "CFH",
+      "category": "vision",
+      "effectAlleleFwd": "C",
+      "genotypeInterpretation": {
+        "CC": "Y402H homozygous — higher associated risk of age-related macular degeneration (AMD).",
+        "CT": "Y402H heterozygous — intermediate associated AMD risk.",
+        "TT": "No Y402H risk allele at this position."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs1061170", "url": "https://www.ncbi.nlm.nih.gov/snp/rs1061170" },
+        { "db": "GWAS Catalog", "id": "rs1061170", "url": "https://www.ebi.ac.uk/gwas/variants/rs1061170" }
+      ],
+      "caveats": "There is no genetic intervention that improves eyesight. For AMD risk, not smoking, a healthy diet, and discussing AREDS-type supplement guidance with an ophthalmologist are the evidence-based levers."
+    },
+    {
+      "rsid": "rs10490924",
+      "gene": "ARMS2",
+      "category": "vision",
+      "effectAlleleFwd": "T",
+      "genotypeInterpretation": {
+        "TT": "A69S homozygous — higher associated risk of age-related macular degeneration (AMD).",
+        "GT": "A69S heterozygous — intermediate associated AMD risk.",
+        "GG": "No A69S risk allele at this position."
+      },
+      "effect": { "metric": "note" },
+      "tier": "B",
+      "sources": [
+        { "db": "dbSNP", "id": "rs10490924", "url": "https://www.ncbi.nlm.nih.gov/snp/rs10490924" },
+        { "db": "GWAS Catalog", "id": "rs10490924", "url": "https://www.ebi.ac.uk/gwas/variants/rs10490924" }
+      ],
+      "caveats": "AMD risk is modifiable by lifestyle (especially not smoking). This reports risk only — it does not promise any vision improvement. Discuss screening with an ophthalmologist."
+    }
+  ]
+}
