@@ -10,7 +10,7 @@ import {
   wipePersisted,
 } from "./persist";
 
-export type View = "upload" | "trace" | "karyotype" | "reports" | "search";
+export type View = "upload" | "trace" | "karyotype" | "reports" | "search" | "wiki";
 
 interface GenomeState {
   genome: ParsedGenome | null;
