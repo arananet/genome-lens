@@ -42,6 +42,42 @@ All four are part of the [holy-bio-mcp](https://github.com/longevity-genie/holy-
 
 ---
 
+## LLM Providers
+
+genome-lens can route reasoning tasks to free-tier LLMs via the `providers` layer.
+
+### Cloudflare Workers AI (free)
+
+[Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) provides serverless
+inference on open-weight models with a **free tier of 10,000 neurons/day**.
+
+```python
+from providers.cloudflare_ai import CloudflareAIClient
+
+# Credentials from env: CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN
+client = CloudflareAIClient()
+
+# List available free models
+print(client.list_models())
+# ['@cf/meta/llama-3.1-8b-instruct', '@cf/microsoft/phi-3-mini-4k-instruct', '@cf/google/gemma-3-12b-it']
+
+# Generate text
+answer = client.generate(
+    "Summarise the function of TP53 in cancer suppression in two sentences.",
+    model="@cf/meta/llama-3.1-8b-instruct",
+)
+print(answer)
+```
+
+**Required env vars:**
+
+| Variable | Where to find it |
+|---|---|
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → right sidebar |
+| `CLOUDFLARE_AI_TOKEN` | Create at dash.cloudflare.com → My Profile → API Tokens → Workers AI template |
+
+---
+
 ## Usage
 
 <!-- TODO: Show the smallest useful example of your project in action. -->
