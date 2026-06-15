@@ -20,16 +20,22 @@ roles:
 
 description: |
   A local-first, mobile-friendly personal genomics viewer. The user uploads a
-  raw consumer DNA export (23andMe, AncestryDNA, MyHeritage), which is parsed and
-  analysed entirely in the browser — the raw genome file never leaves the device.
-  The app matches the genome against a static, evidence-tiered knowledge base and
-  presents associations across health/disease, fitness, body composition, and
-  vision through a 2D trace browser, a 3D karyotype, per-variant detail, four
-  tiered reports, and rsid/gene search. An optional, opt-in AI explainer uses
-  Cloudflare Workers AI to render plain-language explanations; it transmits only
-  the single public knowledge-base variant context the user asks about, never the
-  raw genome. The app is responsive (usable on phones) and deploys as a static SPA
-  to Railway. It is an educational tool, not a medical device.
+  raw consumer DNA export (23andMe, AncestryDNA, MyHeritage, VCF v4.x) or a
+  structured GWAS health report, which is parsed and analysed entirely in the
+  browser — the raw file never leaves the device. For raw genome files, the app
+  matches against a static, evidence-tiered knowledge base and presents
+  associations across health/disease, fitness, body composition, and vision
+  through a 2D trace browser, a 3D karyotype with idiogram bars, an animated
+  agent mesh visualization, per-variant detail, four tiered reports, rsid/gene
+  search, and a printable clinical report (PDF export). For GWAS health reports,
+  it surfaces elevated/reduced risk findings, pharmacogenetics, biomarkers, and
+  hereditary screening in a condensed PDF view. An optional, opt-in AI explainer
+  uses Cloudflare Workers AI to render two-paragraph explanations (what it means
+  + how to reduce risk); it transmits only the single public knowledge-base
+  variant context the user asks about, never the raw genome. A phenotype-driven
+  AI ranking endpoint ranks findings by relevance to a described symptom. The app
+  is responsive (usable on phones) and deploys as a static SPA to Railway. It is
+  an educational tool, not a medical device.
 
 acceptance_criteria:
   - "Given a 23andMe TSV (#-prefixed headers, rsid/chromosome/position/genotype), when uploaded, then it is auto-detected and normalized to the ParsedGenome schema with source='23andme' and build='GRCh37'."
