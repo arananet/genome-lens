@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import type { Finding } from "../../analysis/types";
 import {
   reviewAllFindings,
@@ -6,7 +6,7 @@ import {
   type MeshSummary,
 } from "../../analysis/mesh-review";
 import type { ParsedGenome } from "../../parse/types";
-import { useGenomeStore } from "../../state/store";
+import { useGenomeStore, type MeshEvent } from "../../state/store";
 import { MeshCanvas } from "./MeshCanvas";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 
@@ -18,7 +18,7 @@ interface Props {
 type SynthState = "idle" | "loading" | "done" | "error";
 type Verdict = "allow" | "revise" | "deny";
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Shared sub-components ─────────────────────────────────────────────────────
 
 function VerdictBadge({ verdict }: { verdict: Verdict }) {
   const styles: Record<Verdict, string> = {
@@ -28,9 +28,7 @@ function VerdictBadge({ verdict }: { verdict: Verdict }) {
   };
   const labels: Record<Verdict, string> = { allow: "✓ allow", revise: "⚠ revise", deny: "✕ deny" };
   return (
-    <span
-      className={`flex-shrink-0 rounded border px-1.5 py-px text-[10px] font-bold ${styles[verdict]}`}
-    >
+    <span className={`flex-shrink-0 rounded border px-1.5 py-px text-[10px] font-bold ${styles[verdict]}`}>
       {labels[verdict]}
     </span>
   );
@@ -64,10 +62,212 @@ function OracleHeader({
   );
 }
 
+// ── Real agent pipeline display ───────────────────────────────────────────────
+
+const AGENT_META: Record<string, { icon: string; role: string }> = {
+  "privacy-warden": { icon: "🔒", role: "guard" },
+  "kb-curator": { icon: "📚", role: "enrich" },
+  oracle: { icon: "◈", role: "review" },
+  "parser-smith": { icon: "⚙", role: "parse" },
+  "ui-polisher": { icon: "✦", role: "render" },
+};
+
+function MeshEventFeed({ events, status }: { events: MeshEvent[]; status: string }) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [events.length]);
+
+  if (status === "idle") return null;
+
+  const statusColor =
+    status === "done" ? "text-emerald-400" :
+    status === "error" ? "text-red-400" :
+    "text-indigo-300";
+
+  const statusLabel =
+    status === "running" ? "Agent mesh running…" :
+    status === "done" ? "Pipeline complete" :
+    "Pipeline error";
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <p className="text-[10px] uppercase tracking-wider font-medium text-white/30">
+          Live agent pipeline
+        </p>
+        <span className={`text-[10px] font-semibold ${statusColor}`}>
+          {status === "running" && (
+            <span className="inline-block h-2 w-2 rounded-full bg-indigo-400 animate-pulse mr-1" />
+          )}
+          {statusLabel}
+        </span>
+      </div>
+
+      <div className="rounded-xl border border-white/8 bg-black/20 max-h-72 overflow-y-auto text-xs font-mono space-y-px p-2">
+        {events.map((event, i) => (
+          <EventLine key={i} event={event} />
+        ))}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  );
+}
+
+function EventLine({ event }: { event: MeshEvent }) {
+  if (event.type === "agent-start") {
+    const meta = AGENT_META[event.agent];
+    return (
+      <div className="flex items-start gap-2 py-0.5">
+        <span className="text-white/25 shrink-0 w-20">{event.agent}</span>
+        <span className="text-indigo-300/80">{meta?.icon ?? "→"} {event.summary}</span>
+      </div>
+    );
+  }
+  if (event.type === "tool-call") {
+    return (
+      <div className="flex items-start gap-2 py-0.5 pl-2">
+        <span className="text-white/25 shrink-0 w-20">tool</span>
+        <span className="text-blue-300/70">
+          → {event.tool}({Object.entries(event.input).map(([k, v]) => `${k}="${v}"`).join(", ")})
+        </span>
+      </div>
+    );
+  }
+  if (event.type === "tool-result") {
+    const r = event.result as Record<string, unknown> | null;
+    const summary = r
+      ? r.notFound
+        ? "not found"
+        : [
+            r.clinvarSignificance ? `ClinVar: ${r.clinvarSignificance}` : null,
+            r.gnomadAf != null ? `AF: ${(r.gnomadAf as number).toFixed(3)}` : null,
+            r.summary ? `gene summary available` : null,
+            r.fetched != null ? `batch: ${r.found}/${r.fetched} found` : null,
+          ].filter(Boolean).join(" · ") || "ok"
+      : "null";
+    return (
+      <div className="flex items-start gap-2 py-0.5 pl-2">
+        <span className="text-white/25 shrink-0 w-20">result</span>
+        <span className="text-emerald-300/60">← {summary}</span>
+      </div>
+    );
+  }
+  if (event.type === "oracle-ruling") {
+    const verdictColor =
+      event.verdict === "allow" ? "text-emerald-400" :
+      event.verdict === "revise" ? "text-amber-400" :
+      "text-red-400";
+    const label = event.rsid ? `${event.rsid}` : (event.agent ?? "oracle");
+    return (
+      <div className="flex items-start gap-2 py-0.5">
+        <span className="text-white/25 shrink-0 w-20">oracle</span>
+        <span>
+          <span className="text-white/50">{label}</span>
+          {" → "}
+          <span className={`font-bold ${verdictColor}`}>{event.verdict}</span>
+          {event.reason && <span className="text-white/30 ml-1">({event.reason.slice(0, 60)})</span>}
+        </span>
+      </div>
+    );
+  }
+  if (event.type === "agent-done") {
+    return (
+      <div className="flex items-start gap-2 py-0.5">
+        <span className="text-white/25 shrink-0 w-20">{event.agent}</span>
+        <span className="text-emerald-300/80">✓ {event.summary}</span>
+      </div>
+    );
+  }
+  if (event.type === "agent-text") {
+    return (
+      <div className="flex items-start gap-2 py-0.5 pl-2">
+        <span className="text-white/25 shrink-0 w-20">reasoning</span>
+        <span className="text-white/40 italic">{event.text.slice(0, 120)}</span>
+      </div>
+    );
+  }
+  if (event.type === "pipeline-done") {
+    const s = event.stats;
+    return (
+      <div className="flex items-start gap-2 py-0.5 border-t border-white/8 mt-1 pt-1">
+        <span className="text-white/25 shrink-0 w-20">pipeline</span>
+        <span className="text-emerald-200 font-semibold">
+          ✓ done — {s.enriched} enriched · {s.allowed} approved · {s.denied} denied · {s.toolCalls} tool calls
+        </span>
+      </div>
+    );
+  }
+  if (event.type === "pipeline-blocked") {
+    return (
+      <div className="flex items-start gap-2 py-0.5">
+        <span className="text-white/25 shrink-0 w-20">pipeline</span>
+        <span className="text-red-400">✕ blocked — {event.reason}</span>
+      </div>
+    );
+  }
+  if (event.type === "error") {
+    return (
+      <div className="flex items-start gap-2 py-0.5">
+        <span className="text-white/25 shrink-0 w-20">error</span>
+        <span className="text-red-400">{event.message}</span>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ── Enrichment summary cards ──────────────────────────────────────────────────
+
+function EnrichmentCards({
+  enrichments,
+}: {
+  enrichments: Record<string, { rsid: string; clinvarSignificance: string | null; gnomadAf: number | null; pharmgkbId: string | null }>;
+}) {
+  const entries = Object.values(enrichments).filter(
+    (e) => e.clinvarSignificance || e.gnomadAf != null || e.pharmgkbId,
+  );
+  if (!entries.length) return null;
+
+  return (
+    <div>
+      <p className="mb-2 text-[10px] uppercase tracking-wider font-medium text-white/30">
+        Live enrichment from MyVariant.info · {entries.length} variants
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+        {entries.slice(0, 12).map((e) => (
+          <div key={e.rsid} className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 space-y-0.5">
+            <p className="text-xs font-mono text-white/70">{e.rsid}</p>
+            {e.clinvarSignificance && (
+              <p className="text-[10px] text-white/45">
+                ClinVar: <span className="text-white/65">{e.clinvarSignificance}</span>
+              </p>
+            )}
+            {e.gnomadAf != null && (
+              <p className="text-[10px] text-white/45">
+                gnomAD AF: <span className="text-white/65">{e.gnomadAf.toFixed(4)}</span>
+              </p>
+            )}
+            {e.pharmgkbId && (
+              <p className="text-[10px] text-white/45">
+                PharmGKB: <span className="text-blue-300/70">{e.pharmgkbId}</span>
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Local agent pipeline (browser-side Oracle) ────────────────────────────────
+
 const SOURCE_LABEL: Record<string, string> = {
   "23andme": "23andMe",
   ancestry: "AncestryDNA",
   myheritage: "MyHeritage",
+  vcf: "VCF",
   unknown: "Unknown",
 };
 
@@ -81,7 +281,7 @@ interface PipelineStep {
   isOracle?: boolean;
 }
 
-function AgentPipeline({
+function LocalPipeline({
   summary,
   allOk,
   genome,
@@ -119,7 +319,7 @@ function AgentPipeline({
       icon: "🔒",
       label: "privacy-warden",
       role: "guard",
-      detail: "genome stays local · no upload",
+      detail: "genome stays local · only rsids sent to enrichment APIs",
       verdict: "allow",
     },
     {
@@ -146,7 +346,7 @@ function AgentPipeline({
   return (
     <div>
       <p className="mb-2 text-[10px] uppercase tracking-wider font-medium text-white/30">
-        Agent pipeline · {steps.length} agents
+        Local pipeline · browser-side Oracle
       </p>
       <div className="space-y-px">
         {steps.map((step, i) => (
@@ -160,7 +360,6 @@ function AgentPipeline({
                   : "border-white/5 bg-white/[0.02]"
               }`}
             >
-              {/* Icon + connector */}
               <div className="flex flex-col items-center self-stretch">
                 <span
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border ${
@@ -174,16 +373,12 @@ function AgentPipeline({
                   {step.icon}
                 </span>
               </div>
-
-              {/* Labels */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-1.5">
                   <span
                     className={`text-xs font-mono font-semibold ${
                       step.isOracle
-                        ? allOk
-                          ? "text-emerald-200"
-                          : "text-amber-200"
+                        ? allOk ? "text-emerald-200" : "text-amber-200"
                         : "text-white/75"
                     }`}
                   >
@@ -195,11 +390,8 @@ function AgentPipeline({
                 </div>
                 <p className="text-xs text-white/45 mt-0.5 truncate">{step.detail}</p>
               </div>
-
               <VerdictBadge verdict={step.verdict} />
             </div>
-
-            {/* Connector line */}
             {i < steps.length - 1 && (
               <div className="ml-[1.3125rem] h-px border-b border-dashed border-white/8" />
             )}
@@ -211,11 +403,8 @@ function AgentPipeline({
 }
 
 function CategoryBreakdown({ breakdown }: { breakdown: MeshSummary["breakdown"] }) {
-  const entries = Object.entries(breakdown) as [
-    string,
-    { A: number; B: number; C: number },
-  ][];
-  if (entries.length === 0) return null;
+  const entries = Object.entries(breakdown) as [string, { A: number; B: number; C: number }][];
+  if (!entries.length) return null;
 
   return (
     <div>
@@ -227,10 +416,7 @@ function CategoryBreakdown({ breakdown }: { breakdown: MeshSummary["breakdown"] 
           const total = tiers.A + tiers.B + tiers.C;
           const max = Math.max(tiers.A, tiers.B, tiers.C, 1);
           return (
-            <div
-              key={cat}
-              className="rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2.5"
-            >
+            <div key={cat} className="rounded-lg border border-white/5 bg-white/[0.02] px-2.5 py-2.5">
               <p className="text-xs text-white/65 font-medium mb-2 truncate">{cat}</p>
               <div className="space-y-1">
                 {(["A", "B", "C"] as const).map((tier) => {
@@ -242,25 +428,17 @@ function CategoryBreakdown({ breakdown }: { breakdown: MeshSummary["breakdown"] 
                       <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
-                            tier === "A"
-                              ? "bg-emerald-500"
-                              : tier === "B"
-                                ? "bg-blue-400"
-                                : "bg-white/25"
+                            tier === "A" ? "bg-emerald-500" : tier === "B" ? "bg-blue-400" : "bg-white/25"
                           }`}
                           style={{ width: `${(count / max) * 100}%` }}
                         />
                       </div>
-                      <span className="text-[10px] text-white/40 w-4 text-right shrink-0">
-                        {count}
-                      </span>
+                      <span className="text-[10px] text-white/40 w-4 text-right shrink-0">{count}</span>
                     </div>
                   );
                 })}
               </div>
-              <p className="text-xs font-semibold text-white/55 mt-2">
-                {total} total
-              </p>
+              <p className="text-xs font-semibold text-white/55 mt-2">{total} total</p>
             </div>
           );
         })}
@@ -281,6 +459,9 @@ export function MeshPanel({ genome, findings }: Props) {
   const matchMs = useGenomeStore((s) => s.matchMs);
   const sessionStart = useGenomeStore((s) => s.sessionStart);
   const fileName = useGenomeStore((s) => s.fileName);
+  const meshEvents = useGenomeStore((s) => s.meshEvents);
+  const meshStatus = useGenomeStore((s) => s.meshStatus);
+  const meshEnrichments = useGenomeStore((s) => s.meshEnrichments);
 
   const verdicts = useMemo(() => reviewAllFindings(findings), [findings]);
   const summary = useMemo(
@@ -299,23 +480,14 @@ export function MeshPanel({ genome, findings }: Props) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          totals: {
-            parsed: summary.parsedCount,
-            matched: summary.matchedCount,
-            covered: summary.coveredCount,
-          },
+          totals: { parsed: summary.parsedCount, matched: summary.matchedCount, covered: summary.coveredCount },
           breakdown: summary.breakdown,
         }),
       });
       const data = (await res.json()) as { synthesis?: string; error?: string };
-      console.log("[MeshPanel/synthesize]", { status: res.status, ok: res.ok, data });
       if (!res.ok || data.error) throw new Error(data.error ?? `Server error ${res.status}`);
       const text = (data.synthesis ?? "").trim();
-      if (!text) {
-        throw new Error(
-          "AI returned an empty response — the model may be temporarily unavailable. Try again in a moment.",
-        );
-      }
+      if (!text) throw new Error("AI returned an empty response — try again in a moment.");
       setSynthesis(text);
       setSynthState("done");
     } catch (e) {
@@ -333,47 +505,31 @@ export function MeshPanel({ genome, findings }: Props) {
           <p className="text-xs text-white/40 mt-0.5">
             {summary.parsedCount.toLocaleString()} variants scanned ·{" "}
             {summary.coveredCount} findings
+            {meshStatus === "done" && Object.keys(meshEnrichments).length > 0 && (
+              <span className="text-emerald-400/70 ml-1">
+                · {Object.keys(meshEnrichments).length} enriched live
+              </span>
+            )}
           </p>
         </div>
-        <OracleHeader
-          allOk={allOk}
-          allowCount={summary.allowCount}
-          flaggedCount={summary.flaggedCount}
-        />
+        <OracleHeader allOk={allOk} allowCount={summary.allowCount} flaggedCount={summary.flaggedCount} />
       </div>
 
       {/* Tab buttons */}
       <div className="flex gap-1 border-b border-white/8 pb-0">
-        <button
-          onClick={() => setTab("analysis")}
-          className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
-            tab === "analysis"
-              ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
-              : "text-white/40 hover:text-white/65"
-          }`}
-        >
-          Analysis
-        </button>
-        <button
-          onClick={() => setTab("trace")}
-          className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
-            tab === "trace"
-              ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
-              : "text-white/40 hover:text-white/65"
-          }`}
-        >
-          Trace ✦
-        </button>
-        <button
-          onClick={() => setTab("mesh")}
-          className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
-            tab === "mesh"
-              ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
-              : "text-white/40 hover:text-white/65"
-          }`}
-        >
-          Mesh 🕸
-        </button>
+        {(["analysis", "trace", "mesh"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
+              tab === t
+                ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
+                : "text-white/40 hover:text-white/65"
+            }`}
+          >
+            {t === "analysis" ? "Analysis" : t === "trace" ? "Trace ✦" : "Mesh 🕸"}
+          </button>
+        ))}
       </div>
 
       {/* Mesh tab */}
@@ -405,11 +561,25 @@ export function MeshPanel({ genome, findings }: Props) {
         />
       )}
 
-      {/* Analysis tab content */}
+      {/* Analysis tab */}
       {tab === "analysis" && (
         <>
-          {/* Agent pipeline flow */}
-          <AgentPipeline summary={summary} allOk={allOk} genome={genome} parseMs={parseMs} matchMs={matchMs} />
+          {/* Live agent pipeline feed (real SSE events) */}
+          <MeshEventFeed events={meshEvents} status={meshStatus} />
+
+          {/* Local pipeline + browser Oracle */}
+          <LocalPipeline
+            summary={summary}
+            allOk={allOk}
+            genome={genome}
+            parseMs={parseMs}
+            matchMs={matchMs}
+          />
+
+          {/* Live enrichment cards (populated after pipeline-done) */}
+          {Object.keys(meshEnrichments).length > 0 && (
+            <EnrichmentCards enrichments={meshEnrichments} />
+          )}
 
           {/* Category breakdown */}
           {summary.coveredCount > 0 && (
@@ -426,48 +596,33 @@ export function MeshPanel({ genome, findings }: Props) {
                 ✦ Synthesize with AI — plain-language overview
               </button>
             )}
-
             {synthState === "loading" && (
               <div className="flex items-center justify-center gap-2 py-3">
                 <span className="inline-block h-3 w-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
                 <span className="text-sm text-white/45">Synthesizing…</span>
               </div>
             )}
-
             {synthState === "done" && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">
-                    ✦ AI synthesis
-                  </span>
-                  <span className="text-[10px] text-white/25">
-                    Cloudflare Workers AI · educational only, not medical advice
-                  </span>
+                  <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">✦ AI synthesis</span>
+                  <span className="text-[10px] text-white/25">educational only, not medical advice</span>
                 </div>
                 <div className="rounded-lg border border-indigo-500/15 bg-indigo-500/5 px-4 py-3">
-                  <p className="text-sm leading-relaxed text-white/85 whitespace-pre-wrap">
-                    {synthesis}
-                  </p>
+                  <p className="text-sm leading-relaxed text-white/85 whitespace-pre-wrap">{synthesis}</p>
                 </div>
                 <button
-                  onClick={() => {
-                    setSynthState("idle");
-                    setSynthesis("");
-                  }}
+                  onClick={() => { setSynthState("idle"); setSynthesis(""); }}
                   className="text-xs text-white/30 hover:text-white/60 underline decoration-dotted"
                 >
                   clear
                 </button>
               </div>
             )}
-
             {synthState === "error" && (
               <div className="rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-3 space-y-2">
                 <p className="text-xs text-red-300">{synthErr}</p>
-                <button
-                  onClick={() => setSynthState("idle")}
-                  className="text-xs text-white/45 hover:text-white/75 underline decoration-dotted"
-                >
+                <button onClick={() => setSynthState("idle")} className="text-xs text-white/45 hover:text-white/75 underline decoration-dotted">
                   retry
                 </button>
               </div>
