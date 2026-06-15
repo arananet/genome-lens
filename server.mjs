@@ -43,7 +43,7 @@ app.post("/api/explain", async (req, res) => {
       {
         role: "system",
         content:
-          "You are a careful science communicator. Explain genetics honestly, never diagnose, never invent statistics.",
+          "You are a precise science communicator for a personal genomics tool. Be concrete and specific — never vague. Give actionable, evidence-grounded lifestyle guidance. Never diagnose. Never invent statistics or odds ratios.",
       },
       { role: "user", content: buildExplainPrompt(v) },
     ],
@@ -178,15 +178,39 @@ function extractResponseText(result) {
 // ── Prompt builders ───────────────────────────────────────────────────────────
 
 function buildExplainPrompt(v) {
+  const tierDesc = { A: "strong, replicated evidence", B: "moderate evidence", C: "limited or preliminary evidence" }[v.tier] ?? "limited evidence";
+
+  const copiesLine = (v.copies !== null && v.copies !== undefined)
+    ? `This person carries ${v.copies} cop${v.copies === 1 ? "y" : "ies"} of the effect allele.`
+    : "";
+
+  const effectLine = v.effect?.metric === "OR" && v.effect.value !== undefined
+    ? `Published odds ratio: ${v.effect.value}${v.effect.unit ? " " + v.effect.unit : ""}.`
+    : v.effect?.metric === "beta" && v.effect.value !== undefined
+      ? `Published effect size (beta): ${v.effect.value}${v.effect.unit ? " " + v.effect.unit : ""}.`
+      : "";
+
   return [
-    `Explain this genetic variant in 3-5 short sentences for a layperson.`,
-    `Variant: ${v.rsid} in gene ${v.gene}.`,
-    `Category: ${v.category}. Evidence tier: ${v.tier}.`,
-    `Reported genotype: ${v.genotype ?? "not covered"}.`,
-    `Knowledge-base note: ${v.interpretation}`,
-    `Caveat: ${v.caveats}`,
-    `End with a reminder to confirm any actionable finding with a clinician.`,
-  ].join("\n");
+    `You are explaining a personal genomics result to a curious non-expert. Be specific and genuinely useful — never vague.`,
+    ``,
+    `DATA:`,
+    `Variant: ${v.rsid}  Gene: ${v.gene}  Category: ${v.category}`,
+    `Genotype: ${v.genotype ?? "not tested"}. ${copiesLine}`,
+    `Evidence tier: ${v.tier} (${tierDesc}).`,
+    effectLine,
+    `Knowledge-base finding: ${v.interpretation}`,
+    `KB caveat: ${v.caveats}`,
+    ``,
+    `TASK: Write exactly two paragraphs separated by a single blank line.`,
+    ``,
+    `Paragraph 1 — WHAT THIS MEANS:`,
+    `State concretely what this specific genotype implies for this person — not what the gene does in general. Does this result suggest higher risk, lower risk, or typical? By roughly how much if the evidence supports a number? If the person carries 0 copies of the effect allele, explain what not having it means. 3-4 sentences.`,
+    ``,
+    `Paragraph 2 — HOW TO REDUCE RISK OR IMPROVE:`,
+    `Give 3-4 specific, actionable recommendations tailored to this variant's category and gene. NOT generic advice. Examples: for fitness/body-composition — name specific training types, frequency, or nutritional strategies linked to this gene. For disease-risk — name screening schedules, dietary patterns (Mediterranean, low-saturated-fat, etc.), or specific behaviours with known benefit. For pharmacogenomic — describe what the prescriber should know. For vision — protective behaviours with evidence. End with one sentence: state the evidence tier and recommend professional confirmation before changing medications or undergoing clinical screening.`,
+    ``,
+    `Rules: plain language, no markdown, no bullet lists, no invented statistics, no headers inside the text.`,
+  ].filter(Boolean).join("\n");
 }
 
 function buildSynthesisPrompt(totals, breakdown) {
