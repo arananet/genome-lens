@@ -6,6 +6,9 @@ import {
   type MeshSummary,
 } from "../../analysis/mesh-review";
 import type { ParsedGenome } from "../../parse/types";
+import { useGenomeStore } from "../../state/store";
+import { MeshCanvas } from "./MeshCanvas";
+import { ObservabilityPanel } from "./ObservabilityPanel";
 
 interface Props {
   genome: ParsedGenome;
@@ -61,6 +64,13 @@ function OracleHeader({
   );
 }
 
+const SOURCE_LABEL: Record<string, string> = {
+  "23andme": "23andMe",
+  ancestry: "AncestryDNA",
+  myheritage: "MyHeritage",
+  unknown: "Unknown",
+};
+
 interface PipelineStep {
   id: string;
   icon: string;
@@ -74,17 +84,26 @@ interface PipelineStep {
 function AgentPipeline({
   summary,
   allOk,
+  genome,
+  parseMs,
+  matchMs,
 }: {
   summary: MeshSummary;
   allOk: boolean;
+  genome: ParsedGenome;
+  parseMs: number;
+  matchMs: number;
 }) {
+  const method = genome.method ? ` · ${genome.method}` : " · array-based SNP";
+  const parserDetail = `${summary.parsedCount.toLocaleString()} SNP positions · ${SOURCE_LABEL[genome.source] ?? genome.source}${method} · ${parseMs}ms`;
+
   const steps: PipelineStep[] = [
     {
       id: "parser-smith",
       icon: "⚙",
       label: "parser-smith",
       role: "parse",
-      detail: `${summary.parsedCount.toLocaleString()} variants read`,
+      detail: parserDetail,
       verdict: "allow",
     },
     {
@@ -92,7 +111,7 @@ function AgentPipeline({
       icon: "📚",
       label: "kb-curator",
       role: "match",
-      detail: `${summary.matchedCount} KB entries · ${summary.coveredCount} in your file`,
+      detail: `${summary.matchedCount} KB entries queried · ${summary.coveredCount} in file · ${matchMs}ms`,
       verdict: "allow",
     },
     {
@@ -253,9 +272,15 @@ function CategoryBreakdown({ breakdown }: { breakdown: MeshSummary["breakdown"] 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function MeshPanel({ genome, findings }: Props) {
+  const [tab, setTab] = useState<"analysis" | "trace" | "mesh">("analysis");
   const [synthState, setSynthState] = useState<SynthState>("idle");
   const [synthesis, setSynthesis] = useState("");
   const [synthErr, setSynthErr] = useState("");
+
+  const parseMs = useGenomeStore((s) => s.parseMs);
+  const matchMs = useGenomeStore((s) => s.matchMs);
+  const sessionStart = useGenomeStore((s) => s.sessionStart);
+  const fileName = useGenomeStore((s) => s.fileName);
 
   const verdicts = useMemo(() => reviewAllFindings(findings), [findings]);
   const summary = useMemo(
@@ -317,71 +342,139 @@ export function MeshPanel({ genome, findings }: Props) {
         />
       </div>
 
-      {/* Agent pipeline flow */}
-      <AgentPipeline summary={summary} allOk={allOk} />
+      {/* Tab buttons */}
+      <div className="flex gap-1 border-b border-white/8 pb-0">
+        <button
+          onClick={() => setTab("analysis")}
+          className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
+            tab === "analysis"
+              ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
+              : "text-white/40 hover:text-white/65"
+          }`}
+        >
+          Analysis
+        </button>
+        <button
+          onClick={() => setTab("trace")}
+          className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
+            tab === "trace"
+              ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
+              : "text-white/40 hover:text-white/65"
+          }`}
+        >
+          Trace ✦
+        </button>
+        <button
+          onClick={() => setTab("mesh")}
+          className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
+            tab === "mesh"
+              ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
+              : "text-white/40 hover:text-white/65"
+          }`}
+        >
+          Mesh 🕸
+        </button>
+      </div>
 
-      {/* Category breakdown */}
-      {summary.coveredCount > 0 && (
-        <CategoryBreakdown breakdown={summary.breakdown} />
+      {/* Mesh tab */}
+      {tab === "mesh" && (
+        <div>
+          <p className="mb-2 text-[10px] uppercase tracking-wider font-medium text-white/30">
+            Live agent mesh · canvas rendering
+          </p>
+          <div className="rounded-xl border border-white/8 bg-black/20 overflow-hidden">
+            <MeshCanvas allOk={allOk} />
+          </div>
+          <p className="mt-2 text-[10px] text-white/20">
+            Nodes animate in sequence as your file is processed · particles flow along active edges
+          </p>
+        </div>
       )}
 
-      {/* AI synthesis */}
-      <div className="border-t border-white/10 pt-4">
-        {synthState === "idle" && (
-          <button
-            onClick={synthesize}
-            className="w-full rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-200 hover:bg-indigo-500/20 transition-colors"
-          >
-            ✦ Synthesize with AI — plain-language overview
-          </button>
-        )}
+      {/* Trace tab */}
+      {tab === "trace" && (
+        <ObservabilityPanel
+          genome={genome}
+          findings={findings}
+          verdicts={verdicts}
+          summary={summary}
+          parseMs={parseMs}
+          matchMs={matchMs}
+          sessionStart={sessionStart}
+          fileName={fileName ?? ""}
+        />
+      )}
 
-        {synthState === "loading" && (
-          <div className="flex items-center justify-center gap-2 py-3">
-            <span className="inline-block h-3 w-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
-            <span className="text-sm text-white/45">Synthesizing…</span>
-          </div>
-        )}
+      {/* Analysis tab content */}
+      {tab === "analysis" && (
+        <>
+          {/* Agent pipeline flow */}
+          <AgentPipeline summary={summary} allOk={allOk} genome={genome} parseMs={parseMs} matchMs={matchMs} />
 
-        {synthState === "done" && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">
-                ✦ AI synthesis
-              </span>
-              <span className="text-[10px] text-white/25">
-                Cloudflare Workers AI · educational only, not medical advice
-              </span>
-            </div>
-            <div className="rounded-lg border border-indigo-500/15 bg-indigo-500/5 px-4 py-3">
-              <p className="text-sm leading-relaxed text-white/85 whitespace-pre-wrap">
-                {synthesis}
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setSynthState("idle");
-                setSynthesis("");
-              }}
-              className="text-xs text-white/30 hover:text-white/60 underline decoration-dotted"
-            >
-              clear
-            </button>
-          </div>
-        )}
+          {/* Category breakdown */}
+          {summary.coveredCount > 0 && (
+            <CategoryBreakdown breakdown={summary.breakdown} />
+          )}
 
-        {synthState === "error" && (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-3 space-y-2">
-            <p className="text-xs text-red-300">{synthErr}</p>
-            <button
-              onClick={() => setSynthState("idle")}
-              className="text-xs text-white/45 hover:text-white/75 underline decoration-dotted"
-            >
-              retry
-            </button>
+          {/* AI synthesis */}
+          <div className="border-t border-white/10 pt-4">
+            {synthState === "idle" && (
+              <button
+                onClick={synthesize}
+                className="w-full rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-200 hover:bg-indigo-500/20 transition-colors"
+              >
+                ✦ Synthesize with AI — plain-language overview
+              </button>
+            )}
+
+            {synthState === "loading" && (
+              <div className="flex items-center justify-center gap-2 py-3">
+                <span className="inline-block h-3 w-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
+                <span className="text-sm text-white/45">Synthesizing…</span>
+              </div>
+            )}
+
+            {synthState === "done" && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">
+                    ✦ AI synthesis
+                  </span>
+                  <span className="text-[10px] text-white/25">
+                    Cloudflare Workers AI · educational only, not medical advice
+                  </span>
+                </div>
+                <div className="rounded-lg border border-indigo-500/15 bg-indigo-500/5 px-4 py-3">
+                  <p className="text-sm leading-relaxed text-white/85 whitespace-pre-wrap">
+                    {synthesis}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setSynthState("idle");
+                    setSynthesis("");
+                  }}
+                  className="text-xs text-white/30 hover:text-white/60 underline decoration-dotted"
+                >
+                  clear
+                </button>
+              </div>
+            )}
+
+            {synthState === "error" && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-3 space-y-2">
+                <p className="text-xs text-red-300">{synthErr}</p>
+                <button
+                  onClick={() => setSynthState("idle")}
+                  className="text-xs text-white/45 hover:text-white/75 underline decoration-dotted"
+                >
+                  retry
+                </button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
