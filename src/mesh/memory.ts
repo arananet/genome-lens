@@ -23,8 +23,11 @@ function parseFrontMatter(raw: string): { meta: Record<string, string>; body: st
   return { meta, body: match[2].trim() };
 }
 
-// Default wiki root: ../../wiki relative to this module (repo-root/wiki).
+// When GENOME_LENS_DATA_DIR is set (Railway volume), the wiki lives there.
+// Falls back to the repo-relative wiki/ directory for local development.
 function defaultRoot(): string {
+  const envDir = process.env["GENOME_LENS_DATA_DIR"];
+  if (envDir) return join(envDir, "wiki");
   const here = dirname(fileURLToPath(import.meta.url));
   return join(here, "..", "..", "wiki");
 }
