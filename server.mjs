@@ -78,6 +78,7 @@ async function cfAiRun(body) {
   }
 
   const json = await cfRes.json();
+  console.log("[CF API]", JSON.stringify({ success: json.success, resultKeys: Object.keys(json.result ?? {}), sample: String(json.result?.response ?? "").slice(0, 120) }));
   return { data: json.result };
 }
 
