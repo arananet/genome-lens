@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Finding } from "../../analysis/types";
 import type { ParsedGenome } from "../../parse/types";
 import { reviewAllFindings, buildMeshSummary } from "../../analysis/mesh-review";
@@ -27,6 +27,12 @@ const TIER_LABEL: Record<string, string> = {
 
 export function ClinicalReport({ genome, findings, fileName, onClose }: Props) {
   const reportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.body.classList.add("printing-report");
+    return () => document.body.classList.remove("printing-report");
+  }, []);
+
   const verdicts = useMemo(() => reviewAllFindings(findings), [findings]);
   const summary = useMemo(
     () => buildMeshSummary(genome.variantCount, findings, verdicts),
@@ -60,7 +66,7 @@ export function ClinicalReport({ genome, findings, fileName, onClose }: Props) {
   }, [covered]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-4">
+    <div className="clinical-report-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 backdrop-blur-sm p-4">
       {/* Toolbar — hidden on print */}
       <div className="print:hidden sticky top-4 z-10 mb-4 flex items-center gap-3 self-start">
         <button
