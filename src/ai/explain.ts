@@ -16,6 +16,8 @@ export interface VariantContext {
   category: string;
   tier: string;
   genotype: string | null;
+  copies: number | null;
+  effect: { metric: string; value?: number; unit?: string } | null;
   interpretation: string;
   caveats: string;
 }
@@ -27,6 +29,8 @@ export function contextFromFinding(f: Finding): VariantContext {
     category: f.entry.category,
     tier: f.entry.tier,
     genotype: f.genotype,
+    copies: f.copies,
+    effect: f.entry.effect ?? null,
     interpretation: f.interpretation,
     caveats: f.entry.caveats,
   };
