@@ -1,50 +1,57 @@
-// Real agent orchestrator using Anthropic Claude API with tool use.
-// Yields SSE-ready event objects as it runs the multi-agent pipeline.
+// Real agent orchestrator using Cloudflare Workers AI + direct genomics API calls.
+// No Anthropic SDK — everything goes through the CF credentials already in use.
 //
 // Pipeline:
-//   privacy-warden  → validate no genome data in request
-//   kb-curator      → enrich findings via live genomics APIs (Claude + tool use)
-//   oracle          → rule each enriched finding against the five invariants
+//   privacy-warden  → Oracle check: no genotypes in request
+//   kb-curator      → batch MyVariant.info + MyGene.info (real HTTP calls)
+//   oracle          → deterministic rule check on each enriched finding
+//   cf-synthesizer  → CF Workers AI: brief plain-language enrichment summary
 //
-// Privacy invariant: only rsids + public KB metadata (gene, category, tier)
-// are sent to any external service. No genotypes, no raw file content.
+// Privacy: only rsids + public KB metadata (gene, category, tier) leave the browser.
+// No genotypes, no raw file content, ever.
 
-import Anthropic from "@anthropic-ai/sdk";
-import { TOOL_DEFS, executeTool, batchLookupVariants } from "./tools.mjs";
+import { batchLookupVariants, lookupGene } from "./tools.mjs";
 import { oracleRule } from "./oracle.mjs";
 
-const MODEL = "claude-opus-4-8";
-const MAX_TOOL_ROUNDS = 8;
+const CF_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
-const KB_CURATOR_SYSTEM = `\
-You are kb-curator, a genomics knowledge-base enrichment agent in the genome-lens pipeline.
-Your job: call the provided tools to look up live data for the given genetic findings.
-
-Rules:
-- Call lookup_variant for each rsid to get ClinVar significance, gnomAD allele frequency, PharmGKB data.
-- Call lookup_gene for genes where a functional summary would add useful context (pharmacogenomics, disease genes).
-- Make all calls you need, then stop. Do not generate explanatory prose — only tool calls.
-- Never invent data. If a tool returns null, accept it and move on.
-- Keep your tool calls efficient: batch by thinking about which rsids are highest priority (tier A > B > C).`;
-
-// Async generator: yields event objects the SSE endpoint writes as "data:" lines.
-export async function* orchestrateMeshAnalysis(findingSummaries) {
-  // ── Validate config ────────────────────────────────────────────────────────
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    yield {
-      type: "error",
-      message: "ANTHROPIC_API_KEY is not configured. Set it as a Railway environment variable to enable real agent analysis.",
-    };
-    return;
+async function cfAiRun(accountId, apiToken, messages) {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${CF_MODEL}`;
+  let r;
+  try {
+    r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+    });
+  } catch (err) {
+    return { error: `Network error: ${err.message}` };
   }
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    return { error: `CF API ${r.status}: ${text}` };
+  }
+  const json = await r.json();
+  const result = json.result ?? json;
+  const text =
+    typeof result?.response === "string" ? result.response :
+    typeof result?.generated_text === "string" ? result.generated_text :
+    (Array.isArray(result?.choices) ? result.choices[0]?.message?.content ?? "" : "");
+  return { text };
+}
 
-  const client = new Anthropic({ apiKey });
+export async function* orchestrateMeshAnalysis(findingSummaries) {
+  const accountId = process.env.CF_ACCOUNT_ID;
+  const apiToken = process.env.CF_API_TOKEN;
+  const hasCF = accountId && apiToken;
 
   // ── Step 1: privacy-warden pre-check ──────────────────────────────────────
-  yield { type: "agent-start", agent: "privacy-warden", summary: `Checking ${findingSummaries.length} finding summaries for data-egress compliance…` };
+  yield {
+    type: "agent-start",
+    agent: "privacy-warden",
+    summary: `Checking ${findingSummaries.length} finding summaries — no genotypes allowed`,
+  };
 
-  // Construct the body we're about to send (rsids only — public identifiers)
   const requestBody = findingSummaries.map((f) => f.rsid).join(",");
   const privacyRuling = oracleRule({
     agent: "privacy-warden",
@@ -65,124 +72,80 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
     return;
   }
 
-  // ── Step 1b: Pre-batch all variants from myvariant.info in one request ────
-  // This primes the enrichment map before Claude starts calling tools,
-  // so Claude's individual tool calls return near-instantly from cache.
+  // ── Step 2: kb-curator — batch variant lookup (MyVariant.info) ────────────
   const rsids = findingSummaries.map((f) => f.rsid);
-  yield { type: "agent-start", agent: "kb-curator", summary: `Pre-fetching ${rsids.length} variants from MyVariant.info…` };
 
-  const batchResults = await batchLookupVariants(rsids);
-  const batchHits = Object.values(batchResults).filter((v) => v && !v.notFound).length;
+  yield {
+    type: "agent-start",
+    agent: "kb-curator",
+    summary: `Querying MyVariant.info for ${rsids.length} variants…`,
+  };
+
+  yield {
+    type: "tool-call",
+    agent: "kb-curator",
+    tool: "batch_lookup_variants",
+    input: { rsids: rsids.join(","), fields: "clinvar,gnomad.af,pharmgkb,dbsnp.gene" },
+  };
+
+  const variantData = await batchLookupVariants(rsids);
+  const found = Object.values(variantData).filter((v) => v && !v.notFound).length;
+
   yield {
     type: "tool-result",
     agent: "kb-curator",
     tool: "batch_lookup_variants",
-    result: { fetched: rsids.length, found: batchHits },
+    result: { fetched: rsids.length, found },
   };
 
-  // ── Step 2: kb-curator agent — Claude with real tool use ─────────────────
-  const findingList = findingSummaries
-    .map((f) => `- ${f.rsid} (gene: ${f.gene}, category: ${f.category}, tier: ${f.tier})`)
-    .join("\n");
+  // ── Step 2b: gene lookups for pharmacogenomics + disease entries ──────────
+  const geneSymbols = [
+    ...new Set(
+      findingSummaries
+        .filter((f) => f.category === "pharmacogenomics" || f.category === "health/disease")
+        .map((f) => f.gene)
+        .filter(Boolean),
+    ),
+  ].slice(0, 8); // cap at 8 gene lookups
 
-  const messages = [
-    {
-      role: "user",
-      content: `Enrich the following genetic findings using the available tools.
+  const geneData = {};
+  for (const symbol of geneSymbols) {
+    yield {
+      type: "tool-call",
+      agent: "kb-curator",
+      tool: "lookup_gene",
+      input: { symbol },
+    };
 
-Priority order: tier A first, then B, then C. Call lookup_variant for each rsid.
-Call lookup_gene for genes in the pharmacogenomics or disease categories where a summary adds context.
+    const result = await lookupGene(symbol);
+    geneData[symbol] = result;
 
-Findings:
-${findingList}
-
-Make all necessary tool calls now.`,
-    },
-  ];
-
-  const enrichments = { ...batchResults }; // Start with batch results
-  const geneEnrichments = {};
-  let toolCallCount = 0;
-
-  let round = 0;
-  let continueLoop = true;
-
-  while (continueLoop && round < MAX_TOOL_ROUNDS) {
-    round++;
-    let response;
-    try {
-      response = await client.messages.create({
-        model: MODEL,
-        max_tokens: 2048,
-        thinking: { type: "adaptive" },
-        system: KB_CURATOR_SYSTEM,
-        tools: TOOL_DEFS,
-        messages,
-      });
-    } catch (err) {
-      yield { type: "error", message: `Claude API error: ${err.message}` };
-      return;
-    }
-
-    // Emit text blocks (reasoning output)
-    for (const block of response.content) {
-      if (block.type === "text" && block.text?.trim()) {
-        yield { type: "agent-text", agent: "kb-curator", text: block.text };
-      }
-    }
-
-    // Collect and execute tool calls
-    const toolBlocks = response.content.filter((b) => b.type === "tool_use");
-    if (toolBlocks.length === 0) {
-      continueLoop = false;
-      break;
-    }
-
-    const toolResults = [];
-    for (const block of toolBlocks) {
-      toolCallCount++;
-      yield { type: "tool-call", agent: "kb-curator", tool: block.name, input: block.input };
-
-      const result = await executeTool(block.name, block.input);
-
-      yield { type: "tool-result", agent: "kb-curator", tool: block.name, result };
-
-      // Merge into enrichment maps
-      if (block.name === "lookup_variant" && result && !result.notFound) {
-        enrichments[block.input.rsid] = { ...enrichments[block.input.rsid], ...result };
-      }
-      if (block.name === "lookup_gene" && result) {
-        geneEnrichments[block.input.symbol] = result;
-      }
-
-      toolResults.push({
-        type: "tool_result",
-        tool_use_id: block.id,
-        content: JSON.stringify(result ?? { error: "not found" }),
-      });
-    }
-
-    messages.push({ role: "assistant", content: response.content });
-    messages.push({ role: "user", content: toolResults });
-
-    if (response.stop_reason !== "tool_use") {
-      continueLoop = false;
-    }
+    yield {
+      type: "tool-result",
+      agent: "kb-curator",
+      tool: "lookup_gene",
+      result: result ? { symbol, name: result.name, hasSummary: !!result.summary } : null,
+    };
   }
 
-  const enrichedCount = Object.values(enrichments).filter((v) => v && !v.notFound).length;
+  const toolCalls = 1 + geneSymbols.length; // 1 batch + N gene lookups
+
   yield {
     type: "agent-done",
     agent: "kb-curator",
-    summary: `${toolCallCount} tool calls · ${enrichedCount} variants enriched from live databases`,
+    summary: `${toolCalls} API calls — ${found}/${rsids.length} variants annotated · ${Object.keys(geneData).length} genes fetched`,
   };
 
   // ── Step 3: Oracle reviews each enriched finding ───────────────────────────
-  yield { type: "agent-start", agent: "oracle", summary: `Reviewing ${enrichedCount} enriched findings against invariants…` };
+  yield {
+    type: "agent-start",
+    agent: "oracle",
+    summary: `Reviewing ${found} enriched findings against invariants…`,
+  };
 
   const oracleResults = [];
   for (const rsid of rsids) {
-    const enrich = enrichments[rsid];
+    const enrich = variantData[rsid];
     if (!enrich || enrich.notFound) continue;
 
     const ruling = oracleRule({
@@ -206,23 +169,60 @@ Make all necessary tool calls now.`,
     };
   }
 
-  // Filter to Oracle-approved enrichments only
   const approvedEnrichments = {};
   for (const r of oracleResults) {
     if (r.verdict !== "deny") {
-      approvedEnrichments[r.rsid] = enrichments[r.rsid];
+      approvedEnrichments[r.rsid] = variantData[r.rsid];
     }
   }
-  const geneData = geneEnrichments;
 
   const allowCount = oracleResults.filter((r) => r.verdict === "allow").length;
   const denyCount = oracleResults.filter((r) => r.verdict === "deny").length;
+
+  // ── Step 4: CF Workers AI summary of enrichment (opt-in, requires CF creds) ─
+  if (hasCF && found > 0) {
+    yield {
+      type: "agent-start",
+      agent: "cf-synthesizer",
+      summary: "Generating enrichment summary via Cloudflare Workers AI…",
+    };
+
+    const topFindings = Object.entries(approvedEnrichments)
+      .slice(0, 10)
+      .map(([rsid, e]) => {
+        const parts = [];
+        if (e.clinvarSignificance) parts.push(`ClinVar: ${e.clinvarSignificance}`);
+        if (e.gnomadAf != null) parts.push(`gnomAD AF: ${e.gnomadAf.toFixed(3)}`);
+        if (e.pharmgkbId) parts.push("PharmGKB data available");
+        return `${rsid} (${parts.join(", ") || "no annotation"})`;
+      })
+      .join("; ");
+
+    const cfResult = await cfAiRun(accountId, apiToken, [
+      {
+        role: "system",
+        content:
+          "You are a genomics data summariser. Briefly describe what the live database enrichment revealed about a set of genetic variants. 1-2 sentences. Educational only, not diagnostic.",
+      },
+      {
+        role: "user",
+        content: `Summarise the enrichment for these variants: ${topFindings}`,
+      },
+    ]);
+
+    if (cfResult.text) {
+      yield { type: "agent-text", agent: "cf-synthesizer", text: cfResult.text };
+    }
+    if (cfResult.error) {
+      yield { type: "agent-text", agent: "cf-synthesizer", text: `(CF AI unavailable: ${cfResult.error})` };
+    }
+  }
 
   yield {
     type: "pipeline-done",
     enrichments: approvedEnrichments,
     geneData,
     oracleResults,
-    stats: { enriched: enrichedCount, allowed: allowCount, denied: denyCount, toolCalls: toolCallCount },
+    stats: { enriched: found, allowed: allowCount, denied: denyCount, toolCalls },
   };
 }
