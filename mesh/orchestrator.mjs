@@ -13,7 +13,7 @@
 import { batchLookupVariants, lookupGene } from "./tools.mjs";
 import { oracleRule } from "./oracle.mjs";
 
-const CF_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const CF_MODEL = "@cf/nvidia/nemotron-3-120b-a12b";
 
 async function cfAiRun(accountId, apiToken, messages) {
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${CF_MODEL}`;
