@@ -6,6 +6,11 @@ export function detectFormat(text: string): GenomeSource {
   const head = text.slice(0, 4096);
   const lower = head.toLowerCase();
 
+  // VCF: standard fileformat meta-line or #CHROM header
+  if (/^##fileformat=VCF/i.test(head) || /^#CHROM\tPOS\tID/m.test(head)) {
+    return "vcf";
+  }
+
   // MyHeritage: "##" metadata block and a quoted RSID,CHROMOSOME,POSITION,RESULT header.
   if (
     lower.includes("myheritage") ||
