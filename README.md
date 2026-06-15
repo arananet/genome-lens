@@ -86,26 +86,116 @@ Wrangler and point the SPA at it via `VITE_AI_WORKER_URL`. See
 ## Privacy
 
 - Your raw DNA file is parsed in-browser and is **never uploaded**.
-- No `localStorage`/`IndexedDB` persistence by default. An explicit opt-in
-  "keep in this browser" toggle stores to IndexedDB; a one-tap wipe clears it.
-- The optional AI explainer sends **only** the single variant context you ask
-  about (rsid, gene, genotype, and the already-public knowledge-base note) — and
-  only after you opt in per request. The raw genome file is never transmitted.
-- A strict Content-Security-Policy forbids outbound connections except to the
-  app's own origin and the configured AI worker.
+- **No persistence** — genome data exists only in browser memory for the duration of the session. There is no login, no user account, and no IndexedDB storage.
+- The optional AI explainer sends **only** the single variant context you ask about (rsid, gene, genotype, and the already-public knowledge-base note) — opt-in per request. The raw genome file is never transmitted.
+- The optional AI synthesis sends **only** aggregate counts (`parsed N · covered M`) — no rsids, no genotypes.
+- A strict Content-Security-Policy forbids outbound connections except to the app's own origin.
 
 ---
 
-## Architecture: agent mesh, Oracle & LLM-wiki
+## Architecture
 
-Development is governed by a small **agent mesh**: specialized agents share a
-Markdown **LLM-wiki** (`wiki/`) as memory and are governed by an **Oracle** that
-enforces the project's non-negotiable invariants (local-only, evidence-tiered,
-educational-not-diagnostic, imputation-honest, no vision-improvement claims).
+### Data pipeline (runtime)
 
-This harness is development tooling — it is never bundled into the browser app and
-never touches a genome. The glossary pages in `wiki/glossary/` are the only part
-shipped to the SPA. Full design and a diagram: [`docs/AGENT_MESH.md`](docs/AGENT_MESH.md).
+Every genome analysis runs entirely in your browser — no upload ever occurs.
+
+```mermaid
+flowchart LR
+    subgraph browser["Browser (client-side only)"]
+        FILE([Raw DNA file\n.txt / .csv / .zip])
+        PARSE[parser-smith\nparse + normalise]
+        KB[kb-curator\nmatch knowledge base]
+        ORACLE_B[Oracle\nreview each finding]
+        UI[ui-polisher\nrender trace / reports]
+        EXPLAIN[AI Explainer\nopt-in per variant]
+    end
+
+    subgraph server["Railway Express server"]
+        API_EXPLAIN[POST /api/explain]
+        API_SYNTH[POST /api/synthesize]
+        CF[Cloudflare Workers AI\n@cf/nvidia/nemotron-3-120b-a12b]
+    end
+
+    FILE -->|local parse| PARSE
+    PARSE -->|variants| KB
+    KB -->|findings| ORACLE_B
+    ORACLE_B -->|allow / revise| UI
+    UI -->|single variant context\nrsid, gene, public KB note| EXPLAIN
+    EXPLAIN -->|opt-in POST| API_EXPLAIN
+    API_EXPLAIN --> CF
+    UI -->|aggregate counts only\nno rsids, no genotypes| API_SYNTH
+    API_SYNTH --> CF
+```
+
+**Privacy invariant**: the raw genome file and individual genotypes never leave the browser. The server receives only (a) single-variant public-KB context when you click *Explain* (opt-in), or (b) aggregate category counts for *Synthesize*.
+
+---
+
+### Agent mesh, Oracle & LLM-wiki
+
+The **agent mesh** is the development governance layer. It coordinates five specialised agents under a rule-based **Oracle** that enforces non-negotiable invariants. All agent decisions are logged to a Markdown **LLM-wiki** that doubles as shared memory across sessions.
+
+```mermaid
+flowchart TD
+    subgraph agents["Agent Mesh"]
+        PS[⚙ parser-smith\nparse & normalise DNA files]
+        KC[📚 kb-curator\ncurate knowledge-base entries]
+        PW[🔒 privacy-warden\nenforce data-egress rules]
+        UP[✦ ui-polisher\nwrite user-facing copy]
+        GS[📖 glossary-scribe\nmaintain wiki glossary]
+    end
+
+    subgraph oracle["Oracle (src/mesh/oracle.ts)"]
+        INV["Invariants\n• local-only genome\n• evidence-tiered claims\n• educational-not-diagnostic\n• imputation-honest\n• no vision-improvement claims"]
+        RULE{rule\nagent action}
+        ALLOW([allow])
+        REVISE([revise])
+        DENY([deny])
+    end
+
+    subgraph wiki["LLM-wiki (wiki/)"]
+        GLOSSARY[wiki/glossary/\nMarkdown term definitions\nbundled into SPA at build time]
+        MEMORY[wiki/memory/\ndecisions.md — Oracle log\noracle-charter.md — invariants\nagents.md — role registry]
+    end
+
+    PS & KC & PW & UP & GS -->|AgentAction| RULE
+    RULE --> INV
+    INV --> ALLOW & REVISE & DENY
+    ALLOW -->|appendDecision\nagent + kind only| MEMORY
+    DENY & REVISE -->|blocked, not logged| agents
+
+    GLOSSARY -.->|import.meta.glob at build| SPA([Browser SPA])
+    MEMORY -.->|volume persisted\non Railway| VOL[(Railway volume\n/data)]
+```
+
+#### Agent roles
+
+| Agent | Role | Key invariant guarded |
+|---|---|---|
+| `parser-smith` | Parse DNA files, normalise strands | Never modifies raw data |
+| `kb-curator` | Curate KB entries with sources | Every claim must cite a real source |
+| `privacy-warden` | Gate data-egress actions | No bulk genome upload |
+| `ui-polisher` | Write user-facing copy | No diagnostic phrasing, no risk% |
+| `glossary-scribe` | Maintain `wiki/glossary/` | Educational tone only |
+
+#### Oracle invariants (enforced on every agent action)
+
+1. **local-only** — no action may transmit the raw genome file
+2. **evidence-tiered** — every KB claim must have ≥1 cited source
+3. **educational-not-diagnostic** — no diagnostic language or risk percentages
+4. **imputation-honest** — low-pass / no-call status must be surfaced
+5. **no-vision-improvement** — no claims about improving eyesight
+
+#### What is stored where
+
+| Layer | Data | Persistent? |
+|---|---|---|
+| Browser memory | Full genome (session only) | No — cleared on page close |
+| Browser IndexedDB | Nothing (removed — no user auth) | No |
+| Railway volume `/data/wiki/` | Static glossary + Oracle log (agent+kind only) | Yes — no genomic data |
+| Railway volume `/data/cache/synth/` | AI synthesis text (no counts, no rsids) | Yes — no genomic data |
+
+---
 
 ---
 

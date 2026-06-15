@@ -33,6 +33,5 @@ describe("genome store", () => {
     expect(s.genome).toBeNull();
     expect(s.findings).toEqual([]);
     expect(s.view).toBe("upload");
-    expect(s.persistEnabled).toBe(false);
   });
 });

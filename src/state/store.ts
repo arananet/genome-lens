@@ -3,12 +3,7 @@ import { matchGenome } from "../analysis/match";
 import type { Finding } from "../analysis/types";
 import { parseGenomeFile } from "../parse";
 import { ParseError, type ParsedGenome } from "../parse/types";
-import {
-  isPersistEnabled,
-  loadPersistedGenome,
-  persistGenome,
-  wipePersisted,
-} from "./persist";
+import { wipePersisted } from "./persist";
 
 export type View = "upload" | "trace" | "karyotype" | "reports" | "search" | "wiki";
 
@@ -22,15 +17,12 @@ interface GenomeState {
   view: View;
   selectedRsid: string | null;
 
-  persistEnabled: boolean;
   noticeAcknowledged: boolean;
 
   loadFile: (file: File) => Promise<void>;
   setView: (view: View) => void;
   selectVariant: (rsid: string | null) => void;
-  setPersist: (enabled: boolean) => Promise<void>;
   acknowledgeNotice: () => void;
-  hydrateFromPersistence: () => Promise<void>;
   wipeAll: () => Promise<void>;
 }
 
@@ -43,7 +35,7 @@ function applyGenome(genome: ParsedGenome) {
   };
 }
 
-export const useGenomeStore = create<GenomeState>((set, get) => ({
+export const useGenomeStore = create<GenomeState>((set) => ({
   genome: null,
   findings: [],
   fileName: null,
@@ -53,7 +45,6 @@ export const useGenomeStore = create<GenomeState>((set, get) => ({
   view: "upload",
   selectedRsid: null,
 
-  persistEnabled: false,
   noticeAcknowledged: false,
 
   async loadFile(file) {
@@ -61,9 +52,6 @@ export const useGenomeStore = create<GenomeState>((set, get) => ({
     try {
       const genome = await parseGenomeFile(file);
       set({ ...applyGenome(genome), view: "trace" });
-      if (get().persistEnabled) {
-        await persistGenome(genome);
-      }
     } catch (err) {
       const message =
         err instanceof ParseError
@@ -81,31 +69,12 @@ export const useGenomeStore = create<GenomeState>((set, get) => ({
     set({ selectedRsid: rsid });
   },
 
-  async setPersist(enabled) {
-    set({ persistEnabled: enabled });
-    const { genome } = get();
-    if (enabled && genome) {
-      await persistGenome(genome);
-    } else if (!enabled) {
-      await wipePersisted();
-    }
-  },
-
   acknowledgeNotice() {
     set({ noticeAcknowledged: true });
   },
 
-  async hydrateFromPersistence() {
-    const enabled = await isPersistEnabled();
-    if (!enabled) return;
-    const genome = await loadPersistedGenome();
-    if (genome) {
-      set({ persistEnabled: true, ...applyGenome(genome), view: "trace", fileName: "(restored)" });
-    }
-  },
-
   async wipeAll() {
-    await wipePersisted();
+    await wipePersisted(); // clears any legacy IndexedDB data
     set({
       genome: null,
       findings: [],
@@ -114,7 +83,6 @@ export const useGenomeStore = create<GenomeState>((set, get) => ({
       error: null,
       view: "upload",
       selectedRsid: null,
-      persistEnabled: false,
     });
   },
 }));

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy } from "react";
 import { useGenomeStore } from "./state/store";
 import { FirstUploadNotice } from "./ui/upload/FirstUploadNotice";
 import { UploadPane } from "./ui/upload/UploadPane";
@@ -20,11 +20,6 @@ export default function App() {
   const genome = useGenomeStore((s) => s.genome);
   const view = useGenomeStore((s) => s.view);
   const setView = useGenomeStore((s) => s.setView);
-  const hydrate = useGenomeStore((s) => s.hydrateFromPersistence);
-
-  useEffect(() => {
-    void hydrate();
-  }, [hydrate]);
 
   // The wiki/glossary is reference content — reachable with or without a genome.
   const showWiki = view === "wiki";

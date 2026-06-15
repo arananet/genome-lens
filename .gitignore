@@ -183,3 +183,9 @@ terraform.rc
 # ─── OpenSpec local state ──────────────────────────────────────────────────
 .openspec/.cache/
 .openspec/local.yaml
+
+# ─── Local volume data (Railway mounts /data — this is only for local dev) ──
+data/wiki/
+data/cache/
+data/results/
+!data/.gitkeep

@@ -23,8 +23,11 @@ function parseFrontMatter(raw: string): { meta: Record<string, string>; body: st
   return { meta, body: match[2].trim() };
 }
 
-// Default wiki root: ../../wiki relative to this module (repo-root/wiki).
+// When GENOME_LENS_DATA_DIR is set (Railway volume), the wiki lives there.
+// Falls back to the repo-relative wiki/ directory for local development.
 function defaultRoot(): string {
+  const envDir = process.env["GENOME_LENS_DATA_DIR"];
+  if (envDir) return join(envDir, "wiki");
   const here = dirname(fileURLToPath(import.meta.url));
   return join(here, "..", "..", "wiki");
 }
@@ -46,11 +49,12 @@ export class WikiMemory {
     return { area, slug, meta, body };
   }
 
-  // Append a timestamped entry to the decision log, recording the Oracle verdict.
-  appendDecision(agent: string, summary: string, verdict: string): void {
+  // Append a timestamped entry to the decision log.
+  // Only the agent name and action kind are stored — never rsids or genotype data.
+  appendDecision(agent: string, kind: string, verdict: string): void {
     const path = join(this.root, "memory", "decisions.md");
     const date = new Date().toISOString().slice(0, 10);
-    const line = `- ${date} — \`${agent}\` — ${summary} Oracle: ${verdict}.`;
+    const line = `- ${date} — \`${agent}\` — ${kind} — Oracle: ${verdict}.`;
     const current = existsSync(path) ? readFileSync(path, "utf8") : "<!-- mesh:log -->\n";
     writeFileSync(path, `${current.replace(/\s*$/, "")}\n${line}\n`);
   }
