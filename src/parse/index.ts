@@ -31,7 +31,7 @@ export function parseGenomeText(text: string): ParsedGenome {
 
 // Read a Blob as text, preferring Blob.text() but falling back to FileReader
 // for environments (e.g. jsdom) that don't implement it.
-function readText(file: Blob): Promise<string> {
+export function readText(file: Blob): Promise<string> {
   if (typeof file.text === "function") return file.text();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

@@ -59,6 +59,17 @@ or `.zip`). Everything runs client-side.
 4. Read the four tiered reports.
 5. Hit **Wipe all data** to clear everything from the tab.
 
+### 24Genetics health reports
+
+Drop a **24Genetics** health report (the plain-text extraction of the PDF) onto
+the same upload pane and genome-lens auto-detects it. Instead of the SNP
+knowledge-base pipeline, it surfaces 24Genetics' own pre-computed verdicts in a
+printable **Genetic Health Report**: elevated / reduced population-relative
+risks, pharmacogenetics drug responses, biomarker levels, and a hereditary &
+oncogenic mutation-screening summary. Use **Print / Save as PDF** to export it.
+The ~800 negative hereditary screens are collapsed into a single summary line so
+the report stays readable.
+
 ---
 
 ## Deployment
