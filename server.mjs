@@ -6,7 +6,7 @@ import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ?? 3000;
-const MODEL = "@cf/meta/llama-3.1-8b-instruct";
+const MODEL = "@cf/nvidia/nemotron-3-120b-a12b";
 
 const app = express();
 app.use(express.json());
