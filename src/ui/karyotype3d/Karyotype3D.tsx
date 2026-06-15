@@ -7,7 +7,7 @@ import { CATEGORY_COLOR, TIER_SIZE } from "../common/colors";
 import { CHROM_LENGTHS_GRCH37, CHROM_ORDER } from "../trace/chromInfo";
 
 const MAX_LEN = CHROM_LENGTHS_GRCH37["1"];
-const BAR_HEIGHT = 6; // world units for the longest chromosome
+const BAR_HEIGHT = 6;
 const SPACING = 1.4;
 const PER_ROW = 13;
 
@@ -107,6 +107,7 @@ function Scene({ findings, onSelect }: { findings: Finding[]; onSelect: (rsid: s
 export function Karyotype3D() {
   const findings = useGenomeStore((s) => s.findings);
   const selectVariant = useGenomeStore((s) => s.selectVariant);
+  const [contextLost, setContextLost] = useState(false);
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-4">
@@ -116,9 +117,32 @@ export function Karyotype3D() {
         and sized by evidence tier. Tap a marker for its detail.
       </p>
       <div className="mt-3 h-[60vh] min-h-[360px] overflow-hidden rounded-xl border border-white/10 bg-black/40">
-        <Canvas camera={{ position: [0, 0, 14], fov: 50 }}>
-          <Scene findings={findings} onSelect={selectVariant} />
-        </Canvas>
+        {contextLost ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3">
+            <p className="text-sm text-white/60">WebGL context was lost by the browser.</p>
+            <button
+              onClick={() => setContextLost(false)}
+              className="rounded-lg border border-white/20 px-4 py-2 text-sm text-white/70 hover:bg-white/5"
+            >
+              Reload 3D view
+            </button>
+          </div>
+        ) : (
+          <Canvas
+            camera={{ position: [0, 0, 14], fov: 50 }}
+            frameloop="demand"
+            dpr={[1, 1.5]}
+            gl={{ powerPreference: "default", failIfMajorPerformanceCaveat: false, antialias: true }}
+            onCreated={({ gl }) => {
+              gl.domElement.addEventListener("webglcontextlost", (e) => {
+                e.preventDefault();
+                setContextLost(true);
+              });
+            }}
+          >
+            <Scene findings={findings} onSelect={selectVariant} />
+          </Canvas>
+        )}
       </div>
       <p className="mt-2 text-xs text-white/50">
         This view is a navigational layer. The 2D trace remains the source of truth for reading

@@ -49,7 +49,7 @@ app.post("/api/explain", async (req, res) => {
     ],
   });
   if (result.error) return res.status(result.status).json({ error: result.error });
-  return res.json({ explanation: result.data?.response ?? "" });
+  return res.json({ explanation: result.responseText ?? "" });
 });
 
 app.post("/api/synthesize", async (req, res) => {
@@ -78,7 +78,7 @@ app.post("/api/synthesize", async (req, res) => {
   });
   if (result.error) return res.status(result.status).json({ error: result.error });
 
-  const synthesis = result.data?.response ?? "";
+  const synthesis = result.responseText ?? "";
   // Cache only the AI text — no user-derived genomic counts stored permanently.
   writeSynthCache(cacheKey, {
     key: cacheKey,
@@ -144,15 +144,35 @@ async function cfAiRun(body) {
   }
 
   const json = await cfRes.json();
+  const result = json.result ?? json;
+  const responseText = extractResponseText(result);
   console.log(
     "[CF API]",
     JSON.stringify({
       success: json.success,
-      resultKeys: Object.keys(json.result ?? {}),
-      sample: String(json.result?.response ?? "").slice(0, 120),
+      resultKeys: typeof result === "object" ? Object.keys(result) : typeof result,
+      responseText: responseText.slice(0, 200),
     }),
   );
-  return { data: json.result };
+  return { data: result, responseText };
+}
+
+// ── Response text extraction ──────────────────────────────────────────────────
+// Different CF Workers AI models return text in different fields.
+
+function extractResponseText(result) {
+  if (!result) return "";
+  // Standard chat models (llama, nemotron, gemma)
+  if (typeof result.response === "string") return result.response;
+  // Some models use generated_text
+  if (typeof result.generated_text === "string") return result.generated_text;
+  // OpenAI-compatible choices format
+  const choice = Array.isArray(result.choices) ? result.choices[0] : null;
+  if (choice?.message?.content) return String(choice.message.content);
+  if (typeof choice?.text === "string") return choice.text;
+  // Array result
+  if (Array.isArray(result) && result[0]?.response) return String(result[0].response);
+  return "";
 }
 
 // ── Prompt builders ───────────────────────────────────────────────────────────
