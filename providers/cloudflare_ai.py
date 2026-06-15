@@ -10,8 +10,8 @@ import os
 _BASE = "https://api.cloudflare.com/client/v4/accounts"
 
 FREE_MODELS = [
-    "@cf/meta/llama-3.1-8b-instruct",
-    "@cf/microsoft/phi-3-mini-4k-instruct",
+    "@cf/nvidia/nemotron-3-120b-a12b",
+    "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     "@cf/google/gemma-3-12b-it",
 ]
 
@@ -47,7 +47,12 @@ class CloudflareAIClient:
             "Authorization": f"Bearer {self.api_token}",
             "Content-Type": "application/json",
         }
-        body = {"prompt": prompt}
+        body = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt},
+            ]
+        }
 
         try:
             import httpx

@@ -117,10 +117,10 @@ agents:
       auth_env_vars:
         account_id: "CF_ACCOUNT_ID"
         api_token: "CF_API_TOKEN"
-      default_model: "@cf/meta/llama-3.1-8b-instruct"
+      default_model: "@cf/nvidia/nemotron-3-120b-a12b"
       recommended_models:
-        - "@cf/meta/llama-3.1-8b-instruct"
-        - "@cf/microsoft/phi-3-mini-4k-instruct"
+        - "@cf/nvidia/nemotron-3-120b-a12b"
+        - "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
         - "@cf/google/gemma-3-12b-it"
       docs: "https://developers.cloudflare.com/workers-ai/"
 
