@@ -41,10 +41,9 @@ export async function explainVariant(ctx: VariantContext, signal?: AbortSignal):
     body: JSON.stringify({ variant: ctx }),
     signal,
   });
-  if (!res.ok) {
-    throw new Error(`AI service returned ${res.status}`);
-  }
   const data = (await res.json()) as { explanation?: string; error?: string };
-  if (data.error) throw new Error(data.error);
+  if (!res.ok || data.error) {
+    throw new Error(data.error ?? `AI service returned ${res.status}`);
+  }
   return data.explanation ?? "";
 }
