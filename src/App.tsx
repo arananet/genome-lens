@@ -11,6 +11,7 @@ import { Search } from "./ui/search/Search";
 import { Wiki } from "./ui/wiki/Wiki";
 import { VariantDetail } from "./ui/variant/VariantDetail";
 import { HealthReport } from "./ui/report/HealthReport";
+import { Report24G } from "./ui/report/Report24G";
 
 // 3D view is heavy (three.js) — load it on demand.
 const Karyotype3D = lazy(() =>
@@ -20,13 +21,15 @@ const Karyotype3D = lazy(() =>
 export default function App() {
   const genome = useGenomeStore((s) => s.genome);
   const healthReport = useGenomeStore((s) => s.healthReport);
+  const report24G = useGenomeStore((s) => s.report24G);
   const fileName = useGenomeStore((s) => s.fileName);
+  const closeReport24G = useGenomeStore((s) => s.closeReport24G);
   const view = useGenomeStore((s) => s.view);
   const setView = useGenomeStore((s) => s.setView);
   const wipeAll = useGenomeStore((s) => s.wipeAll);
 
   const showWiki = view === "wiki";
-  const hasData = genome || healthReport;
+  const hasData = genome || healthReport || report24G;
 
   return (
     <div className="flex min-h-full flex-col pb-16 sm:pb-0">
@@ -75,6 +78,14 @@ export default function App() {
 
       <Footer />
       <VariantDetail />
+
+      {report24G && (
+        <Report24G
+          report={report24G}
+          fileName={fileName ?? "24Genetics report"}
+          onClose={closeReport24G}
+        />
+      )}
     </div>
   );
 }

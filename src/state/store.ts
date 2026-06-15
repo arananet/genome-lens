@@ -2,6 +2,11 @@ import { create } from "zustand";
 import { matchGenome } from "../analysis/match";
 import type { Finding } from "../analysis/types";
 import { parseGenomeFile, parseGenomeText, readText } from "../parse";
+import {
+  detect24Genetics,
+  parse24Genetics,
+  type ParsedReport24G,
+} from "../parse/parse24Genetics";
 import { ParseError, type ParsedGenome } from "../parse/types";
 import {
   detectHealthReport,
@@ -15,6 +20,7 @@ export type View = "upload" | "trace" | "karyotype" | "reports" | "search" | "wi
 interface GenomeState {
   genome: ParsedGenome | null;
   findings: Finding[];
+  report24G: ParsedReport24G | null;
   fileName: string | null;
   status: "idle" | "parsing" | "ready" | "error";
   error: string | null;
@@ -30,6 +36,7 @@ interface GenomeState {
   noticeAcknowledged: boolean;
 
   loadFile: (file: File) => Promise<void>;
+  closeReport24G: () => void;
   setView: (view: View) => void;
   selectVariant: (rsid: string | null) => void;
   acknowledgeNotice: () => void;
@@ -40,6 +47,7 @@ interface GenomeState {
 export const useGenomeStore = create<GenomeState>((set) => ({
   genome: null,
   findings: [],
+  report24G: null,
   fileName: null,
   status: "idle",
   error: null,
@@ -55,12 +63,35 @@ export const useGenomeStore = create<GenomeState>((set) => ({
   noticeAcknowledged: false,
 
   async loadFile(file) {
-    set({ status: "parsing", error: null, fileName: file.name, healthReport: null });
+    set({
+      status: "parsing",
+      error: null,
+      fileName: file.name,
+      healthReport: null,
+      report24G: null,
+    });
     try {
       const isZip = file.name.toLowerCase().endsWith(".zip");
 
       if (!isZip) {
         const text = await readText(file);
+
+        // 24Genetics health reports are plain-text PDF extractions. Detect
+        // them up front and route to the dedicated report.
+        if (detect24Genetics(text)) {
+          set({
+            report24G: parse24Genetics(text),
+            genome: null,
+            findings: [],
+            status: "ready",
+            error: null,
+            parseMs: 0,
+            matchMs: 0,
+            sessionStart: Date.now(),
+            view: "reports",
+          });
+          return;
+        }
 
         // Detect GWAS health report format before the raw-genome pipeline
         if (detectHealthReport(text)) {
@@ -126,6 +157,10 @@ export const useGenomeStore = create<GenomeState>((set) => ({
     }
   },
 
+  closeReport24G() {
+    set({ report24G: null, fileName: null, status: "idle", view: "upload" });
+  },
+
   setView(view) {
     set({ view });
   },
@@ -143,6 +178,7 @@ export const useGenomeStore = create<GenomeState>((set) => ({
     set({
       genome: null,
       findings: [],
+      report24G: null,
       fileName: null,
       status: "idle",
       error: null,
