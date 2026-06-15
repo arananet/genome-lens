@@ -42,3 +42,30 @@ body {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Print: when the clinical report overlay is open, hide everything else
+   and convert the fixed overlay to a normal flow element. */
+@media print {
+  body {
+    background: white !important;
+    background-image: none !important;
+    color: black !important;
+  }
+  body.printing-report * {
+    visibility: hidden;
+  }
+  body.printing-report .clinical-report-print,
+  body.printing-report .clinical-report-print * {
+    visibility: visible;
+  }
+  body.printing-report .clinical-report-print {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    overflow: visible !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+  }
+}
