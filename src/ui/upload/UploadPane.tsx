@@ -64,7 +64,7 @@ export function UploadPane() {
         <input
           ref={inputRef}
           type="file"
-          accept=".txt,.csv,.tsv,.zip"
+          accept=".txt,.csv,.tsv,.vcf,.zip"
           className="hidden"
           onChange={(e) => onFiles(e.target.files)}
         />
@@ -90,6 +90,8 @@ export function UploadPane() {
           <li>23andMe raw data (.txt)</li>
           <li>AncestryDNA raw data (.txt)</li>
           <li>MyHeritage raw data (.csv), including low-pass WGS</li>
+          <li>VCF v4.x clinical sequencing (.vcf)</li>
+          <li>GWAS health report exports (.txt)</li>
         </ul>
       </div>
 
