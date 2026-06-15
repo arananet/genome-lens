@@ -140,8 +140,12 @@ describe("WikiMemory + mesh", () => {
     });
     expect(denied.committed).toBe(false);
 
+    // Log records agent + action kind only, never the free-text summary (which
+    // could contain rsids or other user data).
     const log = readFileSync(join(root, "memory", "decisions.md"), "utf8");
-    expect(log).toContain("Add rs6025");
-    expect(log).not.toContain("Add unsourced claim");
+    expect(log).toContain("kb-curator");
+    expect(log).toContain("kb-entry");
+    // Denied actions are never written to the log.
+    expect(log.split("\n").filter((l) => l.startsWith("- ")).length).toBe(1);
   });
 });

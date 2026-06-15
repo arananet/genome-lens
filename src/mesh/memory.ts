@@ -49,11 +49,12 @@ export class WikiMemory {
     return { area, slug, meta, body };
   }
 
-  // Append a timestamped entry to the decision log, recording the Oracle verdict.
-  appendDecision(agent: string, summary: string, verdict: string): void {
+  // Append a timestamped entry to the decision log.
+  // Only the agent name and action kind are stored — never rsids or genotype data.
+  appendDecision(agent: string, kind: string, verdict: string): void {
     const path = join(this.root, "memory", "decisions.md");
     const date = new Date().toISOString().slice(0, 10);
-    const line = `- ${date} — \`${agent}\` — ${summary} Oracle: ${verdict}.`;
+    const line = `- ${date} — \`${agent}\` — ${kind} — Oracle: ${verdict}.`;
     const current = existsSync(path) ? readFileSync(path, "utf8") : "<!-- mesh:log -->\n";
     writeFileSync(path, `${current.replace(/\s*$/, "")}\n${line}\n`);
   }
