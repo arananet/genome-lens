@@ -12,23 +12,36 @@
 
 ## What it does
 
-Turn a raw DNA export (23andMe, AncestryDNA, MyHeritage) into an honest, private,
-navigable view of what is known and what is not:
+Turn a raw DNA export (23andMe, AncestryDNA, MyHeritage, VCF) or a GWAS health
+report into an honest, private, navigable view of what is known and what is not:
 
 - **Parses locally** — your raw DNA file never leaves your device. No upload
   endpoint, no telemetry on genetic data.
+- **Five input formats** — 23andMe, AncestryDNA, MyHeritage (including low-pass
+  WGS), VCF v4.x clinical sequencing, and structured GWAS health reports.
 - **Evidence-tiered** — every variant claim cites a real source (ClinVar,
   GWAS Catalog, PharmGKB, SNPedia…) and a confidence tier (A/B/C). Nothing
   fabricated.
 - **Honest about gaps** — flags imputation, low-pass calls, and SNPs that are
   simply absent from your file (not a negative result).
 - **2D trace browser** — manhattan overview + per-chromosome linear tracks.
-- **3D karyotype** — a navigational layer rendered with three.js.
+- **3D karyotype** — idiogram bars with centromere constrictions, interactive
+  markers, and a detail panel. Rendered with three.js / React Three Fiber.
+- **Agent mesh visualization** — animated Canvas 2D pipeline showing data flow
+  through parser, KB curator, MCP servers, privacy warden, and Oracle.
 - **Four tiered reports** — health/disease, fitness, body composition, vision.
+- **Clinical report export** — printable/PDF findings report grouped by category
+  with tier chips, caveats, and evidence legend.
+- **GWAS health report mode** — imports structured GWAS/multivariate/monovariate
+  health reports, surfaces elevated/reduced risk findings, pharmacogenetics,
+  biomarkers, and hereditary screening in a condensed PDF-exportable view.
+- **Phenotype-driven AI ranking** — describe a symptom or phenotype and rank
+  your genetic findings by relevance (server-side AI, opt-in).
 - **Glossary & wiki** — plain-language genomics definitions, backed by a Markdown
   LLM-wiki (`wiki/`) that doubles as the agent mesh's memory.
-- **Optional AI explainer** — opt-in plain-language explanations via Cloudflare
-  Workers AI. Your raw genome file is **never** sent; see [Privacy](#privacy).
+- **Optional AI explainer** — opt-in two-paragraph explanations (what it means +
+  how to reduce risk) via Cloudflare Workers AI. Your raw genome file is **never**
+  sent; see [Privacy](#privacy).
 
 ---
 
@@ -45,19 +58,25 @@ npm run build    # produce a static SPA in dist/
 ```
 
 Open the dev URL Vite prints, then drag-drop a raw DNA file (`.txt`, `.csv`,
-or `.zip`). Everything runs client-side.
+`.vcf`, or `.zip`). Everything runs client-side.
+
+Synthetic test samples are included in `samples/` for quick testing.
 
 ---
 
 ## Usage
 
-1. Drag a 23andMe / AncestryDNA / MyHeritage raw-data export onto the upload pane.
+1. Drag a raw DNA file (23andMe, AncestryDNA, MyHeritage, VCF) or a GWAS health
+   report onto the upload pane.
 2. genome-lens auto-detects the format, parses it locally, and reports source,
    variant count, build, and whether the method was low-pass.
-3. Browse the 2D trace, spin the 3D karyotype, or open any knowledge-base match
-   to see genotype, tier, sources, and caveats.
-4. Read the four tiered reports.
-5. Hit **Wipe all data** to clear everything from the tab.
+3. Browse the 2D trace, spin the 3D karyotype, watch the agent mesh animation,
+   or open any knowledge-base match to see genotype, tier, sources, and caveats.
+4. Read the four tiered reports (health, fitness, body composition, vision).
+5. Export a clinical findings report as PDF via **Export report**.
+6. For GWAS health reports: view elevated/reduced risk findings, pharmacogenetics,
+   biomarkers, and hereditary screening — export as PDF.
+7. Hit **Wipe all data** to clear everything from the tab.
 
 ---
 
@@ -102,32 +121,42 @@ Every genome analysis runs entirely in your browser — no upload ever occurs.
 ```mermaid
 flowchart LR
     subgraph browser["Browser (client-side only)"]
-        FILE([Raw DNA file\n.txt / .csv / .zip])
+        FILE([Raw DNA file\n.txt / .csv / .vcf / .zip])
+        DETECT{detect format}
         PARSE[parser-smith\nparse + normalise]
+        HR[GWAS health report\nparser]
         KB[kb-curator\nmatch knowledge base]
         ORACLE_B[Oracle\nreview each finding]
         UI[ui-polisher\nrender trace / reports]
+        REPORT[Clinical report\nPDF export]
         EXPLAIN[AI Explainer\nopt-in per variant]
     end
 
     subgraph server["Railway Express server"]
         API_EXPLAIN[POST /api/explain]
         API_SYNTH[POST /api/synthesize]
+        API_PHENO[POST /api/phenotype-rank]
         CF[Cloudflare Workers AI\n@cf/nvidia/nemotron-3-120b-a12b]
     end
 
-    FILE -->|local parse| PARSE
+    FILE -->|local parse| DETECT
+    DETECT -->|23andMe / Ancestry\nMyHeritage / VCF| PARSE
+    DETECT -->|GWAS health report| HR
     PARSE -->|variants| KB
     KB -->|findings| ORACLE_B
     ORACLE_B -->|allow / revise| UI
+    HR -->|elevated / reduced\npharma / biomarkers| REPORT
     UI -->|single variant context\nrsid, gene, public KB note| EXPLAIN
+    UI --> REPORT
     EXPLAIN -->|opt-in POST| API_EXPLAIN
     API_EXPLAIN --> CF
     UI -->|aggregate counts only\nno rsids, no genotypes| API_SYNTH
     API_SYNTH --> CF
+    UI -->|phenotype + finding summaries| API_PHENO
+    API_PHENO --> CF
 ```
 
-**Privacy invariant**: the raw genome file and individual genotypes never leave the browser. The server receives only (a) single-variant public-KB context when you click *Explain* (opt-in), or (b) aggregate category counts for *Synthesize*.
+**Privacy invariant**: the raw genome file and individual genotypes never leave the browser. The server receives only (a) single-variant public-KB context when you click *Explain* (opt-in), (b) aggregate category counts for *Synthesize*, or (c) finding summaries (rsid, gene, category — no raw genotypes) for *Phenotype Rank*.
 
 ---
 
