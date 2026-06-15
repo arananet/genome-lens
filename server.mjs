@@ -3,14 +3,34 @@
 import express from "express";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import {
+  ensureDataDirs,
+  seedWiki,
+  synthCacheKey,
+  readSynthCache,
+  writeSynthCache,
+  listResults,
+  readOracleLog,
+  listGlossary,
+  readGlossaryPage,
+} from "./storage.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ?? 3000;
 const MODEL = "@cf/nvidia/nemotron-3-120b-a12b";
 
+// ── Startup: ensure volume directories exist and seed wiki ────────────────────
+
+ensureDataDirs();
+seedWiki();
+
+// ── Express app ───────────────────────────────────────────────────────────────
+
 const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, "dist")));
+
+// ── AI endpoints ──────────────────────────────────────────────────────────────
 
 app.post("/api/explain", async (req, res) => {
   const v = req.body?.variant;
@@ -20,7 +40,11 @@ app.post("/api/explain", async (req, res) => {
 
   const result = await cfAiRun({
     messages: [
-      { role: "system", content: "You are a careful science communicator. Explain genetics honestly, never diagnose, never invent statistics." },
+      {
+        role: "system",
+        content:
+          "You are a careful science communicator. Explain genetics honestly, never diagnose, never invent statistics.",
+      },
       { role: "user", content: buildExplainPrompt(v) },
     ],
   });
@@ -34,24 +58,67 @@ app.post("/api/synthesize", async (req, res) => {
     return res.status(400).json({ error: "Missing totals or breakdown" });
   }
 
+  // Return cached result for identical requests
+  const cacheKey = synthCacheKey(req.body);
+  const cached = readSynthCache(cacheKey);
+  if (cached) {
+    console.log(`[synthesize] cache hit: ${cacheKey}`);
+    return res.json({ synthesis: cached.synthesis, cached: true });
+  }
+
   const result = await cfAiRun({
     messages: [
-      { role: "system", content: "You are a science communicator. Summarise genomics findings in plain language. Educational only, never diagnostic, no risk percentages." },
+      {
+        role: "system",
+        content:
+          "You are a science communicator. Summarise genomics findings in plain language. Educational only, never diagnostic, no risk percentages.",
+      },
       { role: "user", content: buildSynthesisPrompt(totals, breakdown) },
     ],
   });
   if (result.error) return res.status(result.status).json({ error: result.error });
-  return res.json({ synthesis: result.data?.response ?? "" });
+
+  const synthesis = result.data?.response ?? "";
+  // Persist to volume cache
+  writeSynthCache(cacheKey, {
+    key: cacheKey,
+    createdAt: new Date().toISOString(),
+    totals,
+    synthesis,
+  });
+
+  return res.json({ synthesis });
 });
 
-// SPA fallback — must come last
+// ── Storage read endpoints ────────────────────────────────────────────────────
+
+app.get("/api/oracle/log", (_req, res) => {
+  res.json({ log: readOracleLog(50) });
+});
+
+app.get("/api/results", (_req, res) => {
+  res.json({ results: listResults(50) });
+});
+
+app.get("/api/wiki/glossary", (_req, res) => {
+  res.json({ glossary: listGlossary() });
+});
+
+app.get("/api/wiki/glossary/:slug", (req, res) => {
+  const page = readGlossaryPage(req.params.slug);
+  if (!page) return res.status(404).json({ error: "Not found" });
+  return res.json(page);
+});
+
+// ── SPA fallback (must come last) ─────────────────────────────────────────────
+
 app.get("*", (_req, res) => {
   res.sendFile(join(__dirname, "dist", "index.html"));
 });
 
 app.listen(PORT, () => console.log(`genome-lens on :${PORT}`));
 
-// ── Cloudflare Workers AI helper ─────────────────────────────────────────────
+// ── Cloudflare Workers AI helper ──────────────────────────────────────────────
 
 async function cfAiRun(body) {
   const accountId = process.env.CF_ACCOUNT_ID;
@@ -78,7 +145,14 @@ async function cfAiRun(body) {
   }
 
   const json = await cfRes.json();
-  console.log("[CF API]", JSON.stringify({ success: json.success, resultKeys: Object.keys(json.result ?? {}), sample: String(json.result?.response ?? "").slice(0, 120) }));
+  console.log(
+    "[CF API]",
+    JSON.stringify({
+      success: json.success,
+      resultKeys: Object.keys(json.result ?? {}),
+      sample: String(json.result?.response ?? "").slice(0, 120),
+    }),
+  );
   return { data: json.result };
 }
 

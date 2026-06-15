@@ -1,0 +1,60 @@
+# Feature Spec — created by scripts/openspec scaffold
+title: "Volume-backed persistent storage (wiki, cache, results)"
+slug: "volume-storage"
+type: feature
+status: review
+
+author: "Claude"
+created_at: "2026-06-15"
+updated_at: "2026-06-15"
+
+roles:
+  implementer: "@arananet"
+  reviewer: "@arananet"
+  qa: "@arananet"
+  product_owner: "@arananet"
+
+description: |
+  Add a configurable persistent-storage layer so that the Railway server can
+  survive redeployments without losing its wiki pages, Oracle decision log,
+  and synthesis cache.
+
+  Structure under DATA_DIR (default ./data, Railway: /data via volume mount):
+    wiki/glossary/   — Markdown glossary pages (seeded from repo on first boot)
+    wiki/memory/     — Oracle decision log + agent memory docs
+    cache/synth/     — Synthesis cache; keyed by sha256 of the request body
+    results/         — Reserved for future named scan exports
+
+  A new storage.mjs module handles directory creation, wiki seeding, and
+  cache read/write. server.mjs uses it so that /api/synthesize returns a
+  cached response for identical requests instead of calling Cloudflare again.
+
+  Three new read-only endpoints give visibility into the volume contents:
+    GET /api/oracle/log      — last 50 Oracle decisions (reverse-chron list)
+    GET /api/results         — last 50 cached synthesis entries (reverse-chron)
+    GET /api/wiki/glossary   — list of glossary slugs + titles
+    GET /api/wiki/glossary/:slug — full body of one glossary page
+
+  memory.ts uses GENOME_LENS_DATA_DIR to find its wiki root on Railway.
+
+acceptance_criteria:
+  - "Given GENOME_LENS_DATA_DIR=/data is set, when the server starts, then wiki/glossary, wiki/memory, cache/synth, and results dirs are created under /data."
+  - "Given a fresh volume (empty), when the server starts, then repo wiki/glossary/*.md and wiki/memory/*.md are copied to the volume; on subsequent restarts they are NOT overwritten."
+  - "Given POST /api/synthesize is called twice with identical body, then the second call returns the cached synthesis (no Cloudflare round-trip)."
+  - "Given GET /api/oracle/log is called, then it returns { log: string[] } with the last ≤50 Oracle decision lines."
+  - "Given GET /api/results is called, then it returns { results: SynthEntry[] } with the last ≤50 synthesis cache entries."
+  - "Given GENOME_LENS_DATA_DIR is set and the server has run, GET /api/wiki/glossary returns an array of { slug, title } objects for each glossary page."
+  - "Given GENOME_LENS_DATA_DIR is NOT set, the server falls back to ./data and all features still work for local development."
+
+test_plan:
+  - "Unit: ensureDataDirs() creates all four required subdirectories under a temp dir."
+  - "Unit: seedWiki() copies repo glossary + memory files to a fresh temp dir; second call leaves existing files unchanged."
+  - "Unit: synthCacheKey() returns a stable 16-char hex string for the same input and a different string for different input."
+  - "Unit: readSynthCache() returns null on cache miss, returns the stored entry on hit."
+  - "Integration: POST /api/synthesize twice (mocked CF response) — second call reads from cache file, no HTTP call made."
+  - "Manual QA: deploy to Railway with a volume at /data and GENOME_LENS_DATA_DIR=/data; verify /api/oracle/log and /api/results return 200 JSON."
+
+out_of_scope:
+  - "Upload of genome files to the server (data stays in the browser)."
+  - "Multi-user result namespacing — single-tenant Railway deployment only."
+  - "Volume backup or replication."
