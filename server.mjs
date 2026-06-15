@@ -79,11 +79,10 @@ app.post("/api/synthesize", async (req, res) => {
   if (result.error) return res.status(result.status).json({ error: result.error });
 
   const synthesis = result.data?.response ?? "";
-  // Persist to volume cache
+  // Cache only the AI text — no user-derived genomic counts stored permanently.
   writeSynthCache(cacheKey, {
     key: cacheKey,
     createdAt: new Date().toISOString(),
-    totals,
     synthesis,
   });
 

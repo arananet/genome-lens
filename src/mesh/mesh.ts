@@ -21,7 +21,7 @@ export class AgentMesh {
     const ruling = this.oracle.rule(action);
     const committed = ruling.verdict === "allow";
     if (committed && this.record) {
-      this.memory.appendDecision(action.agent, action.summary, "allow");
+      this.memory.appendDecision(action.agent, action.kind, "allow");
     }
     return { ruling, committed };
   }
