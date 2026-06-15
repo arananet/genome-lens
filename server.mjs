@@ -1,5 +1,7 @@
 // Express server for Railway: serves the Vite SPA and proxies AI requests
 // to Cloudflare Workers AI using CF_ACCOUNT_ID + CF_API_TOKEN from the environment.
+// Also hosts the real agent-mesh analysis endpoint (/api/mesh-analyze) which runs
+// a live Claude API + MCP-tool pipeline on the server.
 import express from "express";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -14,6 +16,7 @@ import {
   listGlossary,
   readGlossaryPage,
 } from "./storage.mjs";
+import { orchestrateMeshAnalysis } from "./mesh/orchestrator.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ?? 3000;
@@ -140,6 +143,48 @@ app.post("/api/synthesize", async (req, res) => {
   });
 
   return res.json({ synthesis });
+});
+
+// ── Real agent-mesh analysis endpoint (SSE) ───────────────────────────────────
+// Accepts a list of finding summaries (rsid + public KB metadata, never genotypes).
+// Streams live agent events: privacy-warden → kb-curator (Claude+tools) → oracle.
+
+app.post("/api/mesh-analyze", async (req, res) => {
+  const findings = req.body?.findings;
+  if (!Array.isArray(findings) || findings.length === 0) {
+    return res.status(400).json({ error: "findings must be a non-empty array" });
+  }
+  if (findings.length > 40) {
+    return res.status(400).json({ error: "findings array must not exceed 40 items" });
+  }
+
+  // Validate each summary — reject anything that looks like a genotype
+  for (const f of findings) {
+    if (typeof f.rsid !== "string" || !f.rsid.startsWith("rs")) {
+      return res.status(400).json({ error: `Invalid rsid: ${String(f.rsid).slice(0, 20)}` });
+    }
+    if (typeof f.genotype === "string") {
+      return res.status(400).json({ error: "Genotypes must not be sent to this endpoint" });
+    }
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  try {
+    for await (const event of orchestrateMeshAnalysis(findings)) {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (typeof res.flush === "function") res.flush();
+    }
+  } catch (err) {
+    console.error("[mesh-analyze] error:", err);
+    res.write(`data: ${JSON.stringify({ type: "error", message: String(err.message) })}\n\n`);
+  }
+
+  res.end();
 });
 
 // ── Storage read endpoints ────────────────────────────────────────────────────

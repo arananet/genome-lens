@@ -12,6 +12,45 @@ import { wipePersisted } from "./persist";
 
 export type View = "upload" | "trace" | "karyotype" | "reports" | "search" | "wiki";
 
+// Events streamed from the real server-side agent mesh pipeline
+export type MeshEvent =
+  | { type: "agent-start"; agent: string; summary: string }
+  | { type: "tool-call"; agent: string; tool: string; input: Record<string, string> }
+  | { type: "tool-result"; agent: string; tool: string; result: unknown }
+  | { type: "oracle-ruling"; rsid?: string; agent?: string; verdict: string; reason?: string; invariant?: string }
+  | { type: "agent-done"; agent: string; summary: string }
+  | { type: "agent-text"; agent: string; text: string }
+  | { type: "pipeline-done"; enrichments: Record<string, VariantEnrichment>; geneData: Record<string, GeneEnrichment>; oracleResults: OracleResult[]; stats: MeshStats }
+  | { type: "pipeline-blocked"; reason: string }
+  | { type: "error"; message: string };
+
+export interface VariantEnrichment {
+  rsid: string;
+  clinvarSignificance: string | null;
+  gnomadAf: number | null;
+  pharmgkbId: string | null;
+  geneSymbol: string | null;
+}
+
+export interface GeneEnrichment {
+  symbol: string;
+  name: string | null;
+  summary: string | null;
+}
+
+export interface OracleResult {
+  rsid: string;
+  verdict: string;
+  reason?: string;
+}
+
+export interface MeshStats {
+  enriched: number;
+  allowed: number;
+  denied: number;
+  toolCalls: number;
+}
+
 interface GenomeState {
   genome: ParsedGenome | null;
   findings: Finding[];
@@ -23,6 +62,12 @@ interface GenomeState {
   sessionStart: number;
 
   healthReport: ParsedHealthReport | null;
+
+  // Real agent mesh state
+  meshEvents: MeshEvent[];
+  meshStatus: "idle" | "running" | "done" | "error";
+  meshEnrichments: Record<string, VariantEnrichment>;
+  meshGeneData: Record<string, GeneEnrichment>;
 
   view: View;
   selectedRsid: string | null;
@@ -36,6 +81,64 @@ interface GenomeState {
   wipeAll: () => Promise<void>;
 }
 
+// Stream mesh-analyze SSE and dispatch events into the store.
+// Called fire-and-forget after local genome analysis completes.
+async function streamMeshAnalysis(
+  findings: Finding[],
+  onEvent: (e: MeshEvent) => void,
+  onEnrichment: (enrichments: Record<string, VariantEnrichment>, geneData: Record<string, GeneEnrichment>) => void,
+): Promise<void> {
+  const summaries = findings
+    .filter((f) => f.covered)
+    .sort((a, b) => (a.entry.tier < b.entry.tier ? -1 : 1)) // A before B before C
+    .slice(0, 30)
+    .map((f) => ({ rsid: f.entry.rsid, gene: f.entry.gene, category: f.entry.category, tier: f.entry.tier }));
+
+  if (!summaries.length) return;
+
+  let response: Response;
+  try {
+    response = await fetch("/api/mesh-analyze", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ findings: summaries }),
+    });
+  } catch {
+    onEvent({ type: "error", message: "Could not reach the agent mesh server." });
+    return;
+  }
+
+  if (!response.ok || !response.body) {
+    onEvent({ type: "error", message: `Agent mesh server responded with ${response.status}` });
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const event = JSON.parse(line.slice(6)) as MeshEvent;
+        onEvent(event);
+        if (event.type === "pipeline-done") {
+          onEnrichment(event.enrichments, event.geneData);
+        }
+      } catch {
+        // malformed SSE line — skip
+      }
+    }
+  }
+}
 
 export const useGenomeStore = create<GenomeState>((set) => ({
   genome: null,
@@ -49,6 +152,11 @@ export const useGenomeStore = create<GenomeState>((set) => ({
 
   healthReport: null,
 
+  meshEvents: [],
+  meshStatus: "idle",
+  meshEnrichments: {},
+  meshGeneData: {},
+
   view: "upload",
   selectedRsid: null,
 
@@ -60,6 +168,10 @@ export const useGenomeStore = create<GenomeState>((set) => ({
       error: null,
       fileName: file.name,
       healthReport: null,
+      meshEvents: [],
+      meshStatus: "idle",
+      meshEnrichments: {},
+      meshGeneData: {},
     });
     try {
       const isZip = file.name.toLowerCase().endsWith(".zip");
@@ -92,15 +204,30 @@ export const useGenomeStore = create<GenomeState>((set) => ({
         const t1 = performance.now();
         const findings = matchGenome(genome);
         const matchMs = Math.round(performance.now() - t1);
-        set({
-          genome,
+        set({ genome, findings, status: "ready", error: null, parseMs, matchMs, sessionStart, view: "trace" });
+
+        // Fire real agent mesh analysis (non-blocking — UI is already usable)
+        set({ meshStatus: "running" });
+        streamMeshAnalysis(
           findings,
-          status: "ready",
-          error: null,
-          parseMs,
-          matchMs,
-          sessionStart,
-          view: "trace",
+          (event) => {
+            set((state) => {
+              const isDone = event.type === "pipeline-done";
+              const isError = event.type === "error" || event.type === "pipeline-blocked";
+              return {
+                meshEvents: [...state.meshEvents, event],
+                meshStatus: isDone ? "done" : isError ? "error" : "running",
+              };
+            });
+          },
+          (enrichments, geneData) => {
+            set({ meshEnrichments: enrichments, meshGeneData: geneData });
+          },
+        ).catch((err: Error) => {
+          set((state) => ({
+            meshEvents: [...state.meshEvents, { type: "error", message: String(err.message) }],
+            meshStatus: "error",
+          }));
         });
       } else {
         // Zip path — delegates to parseGenomeFile which handles unzipping
@@ -111,15 +238,29 @@ export const useGenomeStore = create<GenomeState>((set) => ({
         const t1 = performance.now();
         const findings = matchGenome(genome);
         const matchMs = Math.round(performance.now() - t1);
-        set({
-          genome,
+        set({ genome, findings, status: "ready", error: null, parseMs, matchMs, sessionStart, view: "trace" });
+
+        set({ meshStatus: "running" });
+        streamMeshAnalysis(
           findings,
-          status: "ready",
-          error: null,
-          parseMs,
-          matchMs,
-          sessionStart,
-          view: "trace",
+          (event) => {
+            set((state) => {
+              const isDone = event.type === "pipeline-done";
+              const isError = event.type === "error" || event.type === "pipeline-blocked";
+              return {
+                meshEvents: [...state.meshEvents, event],
+                meshStatus: isDone ? "done" : isError ? "error" : "running",
+              };
+            });
+          },
+          (enrichments, geneData) => {
+            set({ meshEnrichments: enrichments, meshGeneData: geneData });
+          },
+        ).catch((err: Error) => {
+          set((state) => ({
+            meshEvents: [...state.meshEvents, { type: "error", message: String(err.message) }],
+            meshStatus: "error",
+          }));
         });
       }
     } catch (err) {
@@ -144,7 +285,7 @@ export const useGenomeStore = create<GenomeState>((set) => ({
   },
 
   async wipeAll() {
-    await wipePersisted(); // clears any legacy IndexedDB data
+    await wipePersisted();
     set({
       genome: null,
       findings: [],
@@ -155,6 +296,10 @@ export const useGenomeStore = create<GenomeState>((set) => ({
       matchMs: 0,
       sessionStart: 0,
       healthReport: null,
+      meshEvents: [],
+      meshStatus: "idle",
+      meshEnrichments: {},
+      meshGeneData: {},
       view: "upload",
       selectedRsid: null,
     });
