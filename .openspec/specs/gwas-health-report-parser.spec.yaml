@@ -1,0 +1,55 @@
+# Feature Spec — created by scripts/openspec scaffold
+
+title: "GWAS health report parser with PDF export"
+slug: "gwas-health-report-parser"
+type: feature
+status: review
+
+author: "Claude"
+created_at: "2026-06-15"
+updated_at: "2026-06-15"
+
+roles:
+  implementer: "@arananet"
+  reviewer: "@arananet"
+  qa: "@arananet"
+  product_owner: "@arananet"
+
+description: |
+  Parse structured genetic health reports that use GWAS, multivariate, and
+  monovariate analysis methodologies. Extract per-condition risk verdicts
+  (elevated/reduced/average), pharmacogenetic interactions, biomarker
+  predispositions, and hereditary disease screening results. Render a condensed
+  PDF-exportable report that surfaces only actionable findings. No brand-specific
+  references — purely scientific methodology-based detection and parsing.
+
+acceptance_criteria:
+  - "Given a text file containing 'GWAS', 'genetic', 'complex diseases', and 'predisposition' in the first 8000 chars, when uploaded, then detectHealthReport returns true and the file is routed to the health report pipeline instead of the genome pipeline."
+  - "Given a health report with page-delimited condition blocks, when parsed, then each condition's name, category (from 15 medical systems), methodology (GWAS/multivariate/monovariate), verdict, SNPs, and PubMed URL are extracted."
+  - "Given 13 verdict phrase patterns (elevated, reduced, average, flagged_pathogenic, clear, drug_harmful, drug_abnormal, drug_positive, drug_clear, elevated_biomarker, reduced_biomarker, average_biomarker), when matched against verdict text, then the correct verdict is assigned."
+  - "Given hundreds of 'clear' hereditary disease findings, when parsed, then they are filtered out as noise and not included in the report findings."
+  - "Given a parsed health report, when rendered, then the HealthReport component shows: summary cards (conditions analyzed, variants tested, elevated count, reduced count), category breakdown chips, elevated risk table, reduced risk table, pharmacogenetics section, biomarkers section, and hereditary screening summary."
+  - "Given the health report overlay, when printed to PDF, then only the report content appears with white background and no app content bleed-through."
+  - "Given a normal 23andMe/AncestryDNA/MyHeritage/VCF file, when uploaded, then detectHealthReport returns false and the standard genome pipeline runs."
+
+test_plan:
+  - "Unit test: detectHealthReport returns true for GWAS health report fixture and false for 23andMe raw file (tests/healthReport.test.ts)."
+  - "Unit test: parseHealthReport extracts Parkinson's disease as 'reduced' verdict in 'Neurology' category with GWAS methodology and SNPs (tests/healthReport.test.ts)."
+  - "Unit test: parseHealthReport extracts Vitiligo as 'elevated' verdict in 'Dermatology' category (tests/healthReport.test.ts)."
+  - "Unit test: parseHealthReport extracts Warfarin as 'drug_harmful' verdict in 'Pharmacogenetics' with monovariate methodology (tests/healthReport.test.ts)."
+  - "Unit test: parseHealthReport excludes clear hereditary diseases (Cystic fibrosis not in findings) (tests/healthReport.test.ts)."
+  - "Integration test: store.loadFile routes health report to healthReport state, not genome state."
+
+out_of_scope:
+  - "Brand-specific formatting or branding in the output."
+  - "Merging GWAS health report findings with the genome-lens KB pipeline."
+  - "Editing or re-analyzing the health report's conclusions."
+
+implementation_notes: |
+  - Parser at src/parse/parseHealthReport.ts splits text by page footer pattern
+    and extracts conditions via category-header-backtracking.
+  - Report component at src/ui/report/HealthReport.tsx uses the same
+    printing-report body class + clinical-report-print div pattern as
+    ClinicalReport.tsx for PDF isolation.
+  - Store at src/state/store.ts reads file text once via readText(), checks
+    detectHealthReport() first, then falls through to the genome pipeline.
