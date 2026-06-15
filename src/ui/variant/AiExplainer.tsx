@@ -103,11 +103,38 @@ export function AiExplainer({ finding }: { finding: Finding }) {
           )}
 
           {state === "done" && (
-            <div className="rounded-md bg-white/5 px-3 py-2">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/90">{text}</p>
+            <div className="rounded-md bg-white/5 px-3 py-3 space-y-3">
+              {(() => {
+                const parts = text.split(/\n\n+/);
+                const what = parts[0]?.trim() ?? "";
+                const how  = parts.slice(1).join("\n\n").trim();
+                return (
+                  <>
+                    {what && (
+                      <div>
+                        <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-white/30">
+                          What this means
+                        </p>
+                        <p className="text-sm leading-relaxed text-white/88">{what}</p>
+                      </div>
+                    )}
+                    {how && (
+                      <>
+                        <div className="border-t border-white/8" />
+                        <div>
+                          <p className="mb-1 text-[9px] font-semibold uppercase tracking-wider text-indigo-400/80">
+                            How to reduce risk / improve
+                          </p>
+                          <p className="text-sm leading-relaxed text-white/85">{how}</p>
+                        </div>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
               <button
                 onClick={() => { setState("idle"); setText(""); }}
-                className="mt-2 text-xs text-white/40 hover:text-white/70 underline decoration-dotted"
+                className="text-xs text-white/30 hover:text-white/60 underline decoration-dotted"
               >
                 ask again
               </button>
