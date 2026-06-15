@@ -7,6 +7,7 @@ import {
 } from "../../analysis/mesh-review";
 import type { ParsedGenome } from "../../parse/types";
 import { useGenomeStore } from "../../state/store";
+import { MeshCanvas } from "./MeshCanvas";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 
 interface Props {
@@ -271,7 +272,7 @@ function CategoryBreakdown({ breakdown }: { breakdown: MeshSummary["breakdown"] 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function MeshPanel({ genome, findings }: Props) {
-  const [tab, setTab] = useState<"analysis" | "trace">("analysis");
+  const [tab, setTab] = useState<"analysis" | "trace" | "mesh">("analysis");
   const [synthState, setSynthState] = useState<SynthState>("idle");
   const [synthesis, setSynthesis] = useState("");
   const [synthErr, setSynthErr] = useState("");
@@ -363,7 +364,32 @@ export function MeshPanel({ genome, findings }: Props) {
         >
           Trace ✦
         </button>
+        <button
+          onClick={() => setTab("mesh")}
+          className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
+            tab === "mesh"
+              ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
+              : "text-white/40 hover:text-white/65"
+          }`}
+        >
+          Mesh 🕸
+        </button>
       </div>
+
+      {/* Mesh tab */}
+      {tab === "mesh" && (
+        <div>
+          <p className="mb-2 text-[10px] uppercase tracking-wider font-medium text-white/30">
+            Live agent mesh · canvas rendering
+          </p>
+          <div className="rounded-xl border border-white/8 bg-black/20 overflow-hidden">
+            <MeshCanvas allOk={allOk} />
+          </div>
+          <p className="mt-2 text-[10px] text-white/20">
+            Nodes animate in sequence as your file is processed · particles flow along active edges
+          </p>
+        </div>
+      )}
 
       {/* Trace tab */}
       {tab === "trace" && (
