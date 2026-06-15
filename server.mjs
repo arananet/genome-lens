@@ -52,6 +52,59 @@ app.post("/api/explain", async (req, res) => {
   return res.json({ explanation: result.responseText ?? "" });
 });
 
+app.post("/api/phenotype-rank", async (req, res) => {
+  const { phenotype, findings } = req.body ?? {};
+  if (typeof phenotype !== "string" || phenotype.trim().length === 0) {
+    return res.status(400).json({ error: "phenotype must be a non-empty string" });
+  }
+  if (!Array.isArray(findings) || findings.length === 0 || findings.length > 50) {
+    return res.status(400).json({ error: "findings must be an array of 1-50 items" });
+  }
+
+  const findingLines = findings.map((f, i) =>
+    `${i + 1}. rsid=${f.rsid} gene=${f.gene} category=${f.category} tier=${f.tier} note="${f.interpretation}"`
+  ).join("\n");
+
+  const result = await cfAiRun({
+    messages: [
+      {
+        role: "system",
+        content: "You are a clinical genomics assistant. Output ONLY valid JSON. No explanations outside the JSON.",
+      },
+      {
+        role: "user",
+        content: [
+          `A patient presents with: "${phenotype.trim()}"`,
+          ``,
+          `Rank each of the following genetic findings by relevance to that phenotype.`,
+          `Return a JSON array where each element has:`,
+          `  "rsid": string`,
+          `  "relevanceScore": number from 0 (no relevance) to 10 (highly relevant)`,
+          `  "reason": one sentence explaining the relevance or lack thereof`,
+          ``,
+          `Findings:`,
+          findingLines,
+          ``,
+          `Output ONLY the JSON array, no other text.`,
+        ].join("\n"),
+      },
+    ],
+  });
+
+  if (result.error) return res.status(result.status ?? 502).json({ error: result.error });
+
+  try {
+    const text = (result.responseText ?? "").trim();
+    // Strip markdown code fences if present
+    const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    const ranked = JSON.parse(clean);
+    if (!Array.isArray(ranked)) throw new Error("Not an array");
+    return res.json({ ranked });
+  } catch {
+    return res.status(502).json({ error: "AI returned invalid JSON", raw: result.responseText?.slice(0, 200) });
+  }
+});
+
 app.post("/api/synthesize", async (req, res) => {
   const { totals, breakdown } = req.body ?? {};
   if (!totals || !breakdown) {

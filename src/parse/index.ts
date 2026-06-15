@@ -2,6 +2,7 @@ import { detectFormat } from "./detect";
 import { parse23andme } from "./parse23andme";
 import { parseAncestry } from "./parseAncestry";
 import { parseMyHeritage } from "./parseMyHeritage";
+import { parseVcf } from "./parseVcf";
 import { extractGenomeFromZip } from "./zip";
 import { ParseError, type ParsedGenome } from "./types";
 
@@ -19,6 +20,8 @@ export function parseGenomeText(text: string): ParsedGenome {
       return parseAncestry(text);
     case "myheritage":
       return parseMyHeritage(text);
+    case "vcf":
+      return parseVcf(text);
     default:
       throw new ParseError(
         "Unrecognized file format. Supported: 23andMe, AncestryDNA, MyHeritage raw exports.",
