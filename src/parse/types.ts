@@ -7,7 +7,7 @@ export type Chrom =
   | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20"
   | "21" | "22" | "X" | "Y" | "MT";
 
-export type GenomeSource = "23andme" | "ancestry" | "myheritage" | "unknown";
+export type GenomeSource = "23andme" | "ancestry" | "myheritage" | "vcf" | "unknown";
 
 export interface Variant {
   rsid: string;

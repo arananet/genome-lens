@@ -179,6 +179,7 @@ terraform.rc
 .claude/settings.local.json
 .claude/cache/
 .claude/sessions/
+.claude/worktrees/
 
 # ─── OpenSpec local state ──────────────────────────────────────────────────
 .openspec/.cache/
