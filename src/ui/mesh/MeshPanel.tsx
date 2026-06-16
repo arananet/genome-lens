@@ -16,32 +16,19 @@ interface Props {
 }
 
 type SynthState = "idle" | "loading" | "done" | "error";
-type Verdict = "allow" | "revise" | "deny";
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
-
-function VerdictBadge({ verdict }: { verdict: Verdict }) {
-  const styles: Record<Verdict, string> = {
-    allow: "bg-emerald-500/10 border-emerald-500/25 text-emerald-400",
-    revise: "bg-amber-500/10 border-amber-500/25 text-amber-400",
-    deny: "bg-red-500/10 border-red-500/25 text-red-400",
-  };
-  const labels: Record<Verdict, string> = { allow: "✓ allow", revise: "⚠ revise", deny: "✕ deny" };
-  return (
-    <span className={`flex-shrink-0 rounded border px-1.5 py-px text-[10px] font-bold ${styles[verdict]}`}>
-      {labels[verdict]}
-    </span>
-  );
-}
 
 function OracleHeader({
   allOk,
   allowCount,
   flaggedCount,
+  live,
 }: {
   allOk: boolean;
   allowCount: number;
   flaggedCount: number;
+  live: boolean;
 }) {
   return (
     <div
@@ -51,7 +38,9 @@ function OracleHeader({
           : "border-amber-500/30 bg-amber-500/8"
       }`}
     >
-      <p className="text-[10px] uppercase tracking-wider text-white/35 font-medium">Oracle</p>
+      <p className="text-[10px] uppercase tracking-wider text-white/35 font-medium">
+        {live ? "Oracle · live" : "Oracle"}
+      </p>
       <p className={`text-sm font-bold mt-0.5 ${allOk ? "text-emerald-300" : "text-amber-300"}`}>
         {allowCount} allow
         {flaggedCount > 0 && (
@@ -62,14 +51,30 @@ function OracleHeader({
   );
 }
 
+// Live status pill driven entirely by the real SSE pipeline state.
+function PipelineStatus({ status }: { status: string }) {
+  if (status === "idle") return null;
+  const meta: Record<string, { label: string; color: string; pulse: boolean }> = {
+    running: { label: "Agent mesh running…", color: "text-indigo-300", pulse: true },
+    done: { label: "Pipeline complete", color: "text-emerald-400", pulse: false },
+    error: { label: "Pipeline error", color: "text-red-400", pulse: false },
+  };
+  const m = meta[status] ?? meta.running;
+  return (
+    <span className={`text-[10px] font-semibold ${m.color} flex items-center gap-1`}>
+      {m.pulse && <span className="inline-block h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />}
+      {m.label}
+    </span>
+  );
+}
+
 // ── Real agent pipeline display ───────────────────────────────────────────────
 
 const AGENT_META: Record<string, { icon: string; role: string }> = {
   "privacy-warden": { icon: "🔒", role: "guard" },
   "kb-curator": { icon: "📚", role: "enrich" },
   oracle: { icon: "◈", role: "review" },
-  "parser-smith": { icon: "⚙", role: "parse" },
-  "ui-polisher": { icon: "✦", role: "render" },
+  "cf-synthesizer": { icon: "✦", role: "summarize" },
 };
 
 function MeshEventFeed({ events, status }: { events: MeshEvent[]; status: string }) {
@@ -81,31 +86,13 @@ function MeshEventFeed({ events, status }: { events: MeshEvent[]; status: string
 
   if (status === "idle") return null;
 
-  const statusColor =
-    status === "done" ? "text-emerald-400" :
-    status === "error" ? "text-red-400" :
-    "text-indigo-300";
-
-  const statusLabel =
-    status === "running" ? "Agent mesh running…" :
-    status === "done" ? "Pipeline complete" :
-    "Pipeline error";
-
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <p className="text-[10px] uppercase tracking-wider font-medium text-white/30">
-          Live agent pipeline
-        </p>
-        <span className={`text-[10px] font-semibold ${statusColor}`}>
-          {status === "running" && (
-            <span className="inline-block h-2 w-2 rounded-full bg-indigo-400 animate-pulse mr-1" />
-          )}
-          {statusLabel}
-        </span>
-      </div>
+      <p className="text-[10px] uppercase tracking-wider font-medium text-white/30">
+        Event log · real-time from /api/mesh-analyze
+      </p>
 
-      <div className="rounded-xl border border-white/8 bg-black/20 max-h-72 overflow-y-auto text-xs font-mono space-y-px p-2">
+      <div className="rounded-xl border border-white/8 bg-black/20 max-h-56 overflow-y-auto text-xs font-mono space-y-px p-2">
         {events.map((event, i) => (
           <EventLine key={i} event={event} />
         ))}
@@ -261,7 +248,7 @@ function EnrichmentCards({
   );
 }
 
-// ── Local agent pipeline (browser-side Oracle) ────────────────────────────────
+// ── Local parse summary (one line — parsing/matching happens in-browser) ──────
 
 const SOURCE_LABEL: Record<string, string> = {
   "23andme": "23andMe",
@@ -271,134 +258,24 @@ const SOURCE_LABEL: Record<string, string> = {
   unknown: "Unknown",
 };
 
-interface PipelineStep {
-  id: string;
-  icon: string;
-  label: string;
-  role: string;
-  detail: string;
-  verdict: Verdict;
-  isOracle?: boolean;
-}
-
-function LocalPipeline({
+function LocalSummaryLine({
   summary,
-  allOk,
   genome,
   parseMs,
   matchMs,
 }: {
   summary: MeshSummary;
-  allOk: boolean;
   genome: ParsedGenome;
   parseMs: number;
   matchMs: number;
 }) {
   const method = genome.method ? ` · ${genome.method}` : " · array-based SNP";
-  const parserDetail = `${summary.parsedCount.toLocaleString()} SNP positions · ${SOURCE_LABEL[genome.source] ?? genome.source}${method} · ${parseMs}ms`;
-
-  const steps: PipelineStep[] = [
-    {
-      id: "parser-smith",
-      icon: "⚙",
-      label: "parser-smith",
-      role: "parse",
-      detail: parserDetail,
-      verdict: "allow",
-    },
-    {
-      id: "kb-curator",
-      icon: "📚",
-      label: "kb-curator",
-      role: "match",
-      detail: `${summary.matchedCount} KB entries queried · ${summary.coveredCount} in file · ${matchMs}ms`,
-      verdict: "allow",
-    },
-    {
-      id: "privacy-warden",
-      icon: "🔒",
-      label: "privacy-warden",
-      role: "guard",
-      detail: "genome stays local · only rsids sent to enrichment APIs",
-      verdict: "allow",
-    },
-    {
-      id: "oracle",
-      icon: "◈",
-      label: "Oracle",
-      role: "review",
-      detail: allOk
-        ? `${summary.allowCount} findings allowed`
-        : `${summary.allowCount} allow · ${summary.flaggedCount} flagged`,
-      verdict: allOk ? "allow" : "revise",
-      isOracle: true,
-    },
-    {
-      id: "ui-polisher",
-      icon: "✦",
-      label: "ui-polisher",
-      role: "render",
-      detail: `${summary.coveredCount} findings displayed`,
-      verdict: "allow",
-    },
-  ];
-
   return (
-    <div>
-      <p className="mb-2 text-[10px] uppercase tracking-wider font-medium text-white/30">
-        Local pipeline · browser-side Oracle
-      </p>
-      <div className="space-y-px">
-        {steps.map((step, i) => (
-          <div key={step.id}>
-            <div
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border transition-colors ${
-                step.isOracle
-                  ? allOk
-                    ? "border-emerald-500/20 bg-emerald-500/[0.05]"
-                    : "border-amber-500/20 bg-amber-500/[0.05]"
-                  : "border-white/5 bg-white/[0.02]"
-              }`}
-            >
-              <div className="flex flex-col items-center self-stretch">
-                <span
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border ${
-                    step.isOracle
-                      ? allOk
-                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                        : "border-amber-500/40 bg-amber-500/10 text-amber-300"
-                      : "border-white/10 bg-white/5 text-white/60"
-                  }`}
-                >
-                  {step.icon}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-1.5">
-                  <span
-                    className={`text-xs font-mono font-semibold ${
-                      step.isOracle
-                        ? allOk ? "text-emerald-200" : "text-amber-200"
-                        : "text-white/75"
-                    }`}
-                  >
-                    {step.label}
-                  </span>
-                  <span className="text-[10px] text-white/25 uppercase tracking-wide">
-                    {step.role}
-                  </span>
-                </div>
-                <p className="text-xs text-white/45 mt-0.5 truncate">{step.detail}</p>
-              </div>
-              <VerdictBadge verdict={step.verdict} />
-            </div>
-            {i < steps.length - 1 && (
-              <div className="ml-[1.3125rem] h-px border-b border-dashed border-white/8" />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
+    <p className="text-[11px] text-white/35">
+      🔒 Parsed locally in your browser — {summary.parsedCount.toLocaleString()} SNP positions ·{" "}
+      {SOURCE_LABEL[genome.source] ?? genome.source}
+      {method} · {parseMs}ms parse · {matchMs}ms KB match · only rsids leave the browser.
+    </p>
   );
 }
 
@@ -450,7 +327,7 @@ function CategoryBreakdown({ breakdown }: { breakdown: MeshSummary["breakdown"] 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function MeshPanel({ genome, findings }: Props) {
-  const [tab, setTab] = useState<"analysis" | "trace" | "mesh">("analysis");
+  const [showTrace, setShowTrace] = useState(false);
   const [synthState, setSynthState] = useState<SynthState>("idle");
   const [synthesis, setSynthesis] = useState("");
   const [synthErr, setSynthErr] = useState("");
@@ -469,7 +346,17 @@ export function MeshPanel({ genome, findings }: Props) {
     [genome.variantCount, findings, verdicts],
   );
 
-  const allOk = summary.flaggedCount === 0;
+  // Prefer the real server-side Oracle tally (from pipeline-done) once it
+  // arrives; fall back to the local browser-side review before/without it.
+  const pipelineDone = useMemo(
+    () => meshEvents.find((e) => e.type === "pipeline-done") as
+      Extract<MeshEvent, { type: "pipeline-done" }> | undefined,
+    [meshEvents],
+  );
+  const liveOracle = pipelineDone
+    ? { allowCount: pipelineDone.stats.allowed, flaggedCount: pipelineDone.stats.denied }
+    : null;
+  const allOk = (liveOracle ?? summary).flaggedCount === 0;
 
   async function synthesize() {
     setSynthState("loading");
@@ -497,11 +384,14 @@ export function MeshPanel({ genome, findings }: Props) {
   }
 
   return (
-    <div className="mb-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-5">
+    <div className="mb-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
       {/* Header row */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-white/90">Agent mesh analysis</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-white/90">Agent mesh analysis</p>
+            <PipelineStatus status={meshStatus} />
+          </div>
           <p className="text-xs text-white/40 mt-0.5">
             {summary.parsedCount.toLocaleString()} variants scanned ·{" "}
             {summary.coveredCount} findings
@@ -512,124 +402,103 @@ export function MeshPanel({ genome, findings }: Props) {
             )}
           </p>
         </div>
-        <OracleHeader allOk={allOk} allowCount={summary.allowCount} flaggedCount={summary.flaggedCount} />
-      </div>
-
-      {/* Tab buttons */}
-      <div className="flex gap-1 border-b border-white/8 pb-0">
-        {(["analysis", "trace", "mesh"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-t transition-colors ${
-              tab === t
-                ? "text-white/90 border-b-2 border-indigo-400 -mb-px"
-                : "text-white/40 hover:text-white/65"
-            }`}
-          >
-            {t === "analysis" ? "Analysis" : t === "trace" ? "Trace ✦" : "Mesh 🕸"}
-          </button>
-        ))}
-      </div>
-
-      {/* Mesh tab */}
-      {tab === "mesh" && (
-        <div>
-          <p className="mb-2 text-[10px] uppercase tracking-wider font-medium text-white/30">
-            Live agent mesh · canvas rendering
-          </p>
-          <div className="rounded-xl border border-white/8 bg-black/20 overflow-hidden">
-            <MeshCanvas allOk={allOk} />
-          </div>
-          <p className="mt-2 text-[10px] text-white/20">
-            Nodes animate in sequence as your file is processed · particles flow along active edges
-          </p>
-        </div>
-      )}
-
-      {/* Trace tab */}
-      {tab === "trace" && (
-        <ObservabilityPanel
-          genome={genome}
-          findings={findings}
-          verdicts={verdicts}
-          summary={summary}
-          parseMs={parseMs}
-          matchMs={matchMs}
-          sessionStart={sessionStart}
-          fileName={fileName ?? ""}
+        <OracleHeader
+          allOk={allOk}
+          allowCount={(liveOracle ?? summary).allowCount}
+          flaggedCount={(liveOracle ?? summary).flaggedCount}
+          live={!!liveOracle}
         />
+      </div>
+
+      {/* Mesh visualization — always visible, driven by the real SSE stream */}
+      <div>
+        <div className="rounded-xl border border-white/8 bg-black/20 overflow-hidden">
+          <MeshCanvas />
+        </div>
+        <p className="mt-1.5 text-[10px] text-white/20">
+          Live graph of the real pipeline · privacy-warden → kb-curator → myvariant.info / mygene.info → Oracle → cf-synthesizer
+        </p>
+      </div>
+
+      {/* Real-time event log */}
+      <MeshEventFeed events={meshEvents} status={meshStatus} />
+
+      <LocalSummaryLine summary={summary} genome={genome} parseMs={parseMs} matchMs={matchMs} />
+
+      {/* Live enrichment cards (populated after pipeline-done) */}
+      {Object.keys(meshEnrichments).length > 0 && (
+        <EnrichmentCards enrichments={meshEnrichments} />
       )}
 
-      {/* Analysis tab */}
-      {tab === "analysis" && (
-        <>
-          {/* Live agent pipeline feed (real SSE events) */}
-          <MeshEventFeed events={meshEvents} status={meshStatus} />
+      {/* Category breakdown */}
+      {summary.coveredCount > 0 && <CategoryBreakdown breakdown={summary.breakdown} />}
 
-          {/* Local pipeline + browser Oracle */}
-          <LocalPipeline
-            summary={summary}
-            allOk={allOk}
-            genome={genome}
-            parseMs={parseMs}
-            matchMs={matchMs}
-          />
-
-          {/* Live enrichment cards (populated after pipeline-done) */}
-          {Object.keys(meshEnrichments).length > 0 && (
-            <EnrichmentCards enrichments={meshEnrichments} />
-          )}
-
-          {/* Category breakdown */}
-          {summary.coveredCount > 0 && (
-            <CategoryBreakdown breakdown={summary.breakdown} />
-          )}
-
-          {/* AI synthesis */}
-          <div className="border-t border-white/10 pt-4">
-            {synthState === "idle" && (
-              <button
-                onClick={synthesize}
-                className="w-full rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-200 hover:bg-indigo-500/20 transition-colors"
-              >
-                ✦ Synthesize with AI — plain-language overview
-              </button>
-            )}
-            {synthState === "loading" && (
-              <div className="flex items-center justify-center gap-2 py-3">
-                <span className="inline-block h-3 w-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
-                <span className="text-sm text-white/45">Synthesizing…</span>
-              </div>
-            )}
-            {synthState === "done" && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">✦ AI synthesis</span>
-                  <span className="text-[10px] text-white/25">educational only, not medical advice</span>
-                </div>
-                <div className="rounded-lg border border-indigo-500/15 bg-indigo-500/5 px-4 py-3">
-                  <p className="text-sm leading-relaxed text-white/85 whitespace-pre-wrap">{synthesis}</p>
-                </div>
-                <button
-                  onClick={() => { setSynthState("idle"); setSynthesis(""); }}
-                  className="text-xs text-white/30 hover:text-white/60 underline decoration-dotted"
-                >
-                  clear
-                </button>
-              </div>
-            )}
-            {synthState === "error" && (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-3 space-y-2">
-                <p className="text-xs text-red-300">{synthErr}</p>
-                <button onClick={() => setSynthState("idle")} className="text-xs text-white/45 hover:text-white/75 underline decoration-dotted">
-                  retry
-                </button>
-              </div>
-            )}
+      {/* Trace — deep technical view, collapsed by default */}
+      <div className="border-t border-white/10 pt-3">
+        <button
+          onClick={() => setShowTrace((v) => !v)}
+          className="text-xs font-medium text-white/40 hover:text-white/70 transition-colors"
+        >
+          {showTrace ? "▾" : "▸"} Trace ✦ — per-finding verdicts, sources, timing
+        </button>
+        {showTrace && (
+          <div className="mt-3">
+            <ObservabilityPanel
+              genome={genome}
+              findings={findings}
+              verdicts={verdicts}
+              summary={summary}
+              parseMs={parseMs}
+              matchMs={matchMs}
+              sessionStart={sessionStart}
+              fileName={fileName ?? ""}
+            />
           </div>
-        </>
-      )}
+        )}
+      </div>
+
+      {/* AI synthesis */}
+      <div className="border-t border-white/10 pt-4">
+        {synthState === "idle" && (
+          <button
+            onClick={synthesize}
+            className="w-full rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-200 hover:bg-indigo-500/20 transition-colors"
+          >
+            ✦ Synthesize with AI — plain-language overview
+          </button>
+        )}
+        {synthState === "loading" && (
+          <div className="flex items-center justify-center gap-2 py-3">
+            <span className="inline-block h-3 w-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
+            <span className="text-sm text-white/45">Synthesizing…</span>
+          </div>
+        )}
+        {synthState === "done" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">✦ AI synthesis</span>
+              <span className="text-[10px] text-white/25">educational only, not medical advice</span>
+            </div>
+            <div className="rounded-lg border border-indigo-500/15 bg-indigo-500/5 px-4 py-3">
+              <p className="text-sm leading-relaxed text-white/85 whitespace-pre-wrap">{synthesis}</p>
+            </div>
+            <button
+              onClick={() => { setSynthState("idle"); setSynthesis(""); }}
+              className="text-xs text-white/30 hover:text-white/60 underline decoration-dotted"
+            >
+              clear
+            </button>
+          </div>
+        )}
+        {synthState === "error" && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-3 space-y-2">
+            <p className="text-xs text-red-300">{synthErr}</p>
+            <button onClick={() => setSynthState("idle")} className="text-xs text-white/45 hover:text-white/75 underline decoration-dotted">
+              retry
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
