@@ -155,16 +155,37 @@ async function sendToMeshAnalyze(
   }
 }
 
-// First mesh pass: enriches the curated KB findings (up to 30).
+// First mesh pass: curated KB findings + a spread sample of genome rsids.
+// Fills the 500-slot budget so the MCP tools scan a representative cross-section
+// of the full genome even when the curated KB only covers a handful of entries.
 async function streamMeshAnalysis(
   findings: Finding[],
+  allGenomeRsids: string[], // every rsid from the uploaded genome
   onEvent: (e: MeshEvent) => void,
   onEnrichment: (enrichments: Record<string, VariantEnrichment>, geneData: Record<string, GeneEnrichment>) => void,
 ): Promise<void> {
-  const summaries = findings
+  const BUDGET = 500;
+
+  // Tier-sorted KB hits first
+  const kbSummaries = findings
     .filter((f) => f.covered)
     .sort((a, b) => (a.entry.tier < b.entry.tier ? -1 : 1))
     .map((f) => ({ rsid: f.entry.rsid, gene: f.entry.gene, category: f.entry.category, tier: f.entry.tier }));
+
+  const kbRsidSet = new Set(kbSummaries.map((s) => s.rsid));
+
+  // Fill remaining budget with evenly-spaced rsids from the full genome.
+  // Systematic stride (every Nth) avoids a costly random-shuffle of 600K items
+  // while still giving a spread across the genome file.
+  const remaining = BUDGET - kbSummaries.length;
+  const pool = allGenomeRsids.filter((id) => /^rs\d+$/.test(id) && !kbRsidSet.has(id));
+  const stride = pool.length > 0 ? Math.max(1, Math.floor(pool.length / remaining)) : 1;
+  const genomeSample: MeshSummary[] = [];
+  for (let i = 0; i < pool.length && genomeSample.length < remaining; i += stride) {
+    genomeSample.push({ rsid: pool[i], gene: "", category: "trait", tier: "C" });
+  }
+
+  const summaries = [...kbSummaries, ...genomeSample];
   await sendToMeshAnalyze(summaries, onEvent, onEnrichment);
 }
 
@@ -313,7 +334,8 @@ export const useGenomeStore = create<GenomeState>((set) => ({
         // First mesh pass: enrich curated KB findings (non-blocking — UI is already usable)
         set({ meshStatus: "running" });
         const meshCbs1 = makeMeshCallbacks(set);
-        streamMeshAnalysis(findings, meshCbs1.onEvent, meshCbs1.onEnrichment).catch((err: Error) => {
+        const allRsids1 = [...genome.byRsid.keys()];
+        streamMeshAnalysis(findings, allRsids1, meshCbs1.onEvent, meshCbs1.onEnrichment).catch((err: Error) => {
           meshCbs1.onEvent({ type: "error", message: err.message });
         });
 
@@ -363,7 +385,8 @@ export const useGenomeStore = create<GenomeState>((set) => ({
         // First mesh pass: enrich curated KB findings (zip path)
         set({ meshStatus: "running" });
         const meshCbs1Zip = makeMeshCallbacks(set);
-        streamMeshAnalysis(findings, meshCbs1Zip.onEvent, meshCbs1Zip.onEnrichment).catch((err: Error) => {
+        const allRsids1Zip = [...genome.byRsid.keys()];
+        streamMeshAnalysis(findings, allRsids1Zip, meshCbs1Zip.onEvent, meshCbs1Zip.onEnrichment).catch((err: Error) => {
           meshCbs1Zip.onEvent({ type: "error", message: err.message });
         });
 
