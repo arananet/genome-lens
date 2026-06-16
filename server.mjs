@@ -155,8 +155,8 @@ app.post("/api/mesh-analyze", async (req, res) => {
   if (!Array.isArray(findings) || findings.length === 0) {
     return res.status(400).json({ error: "findings must be a non-empty array" });
   }
-  if (findings.length > 40) {
-    return res.status(400).json({ error: "findings array must not exceed 40 items" });
+  if (findings.length > 500) {
+    return res.status(400).json({ error: "findings array must not exceed 500 items" });
   }
 
   // Validate each summary — reject anything that looks like a genotype

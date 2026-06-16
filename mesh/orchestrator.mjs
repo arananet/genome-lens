@@ -3,7 +3,7 @@
 //
 // Pipeline:
 //   privacy-warden  → Oracle check: no genotypes in request
-//   kb-curator      → batch MyVariant.info + MyGene.info (real HTTP calls)
+//   kb-curator      → concurrent batched MyVariant.info + parallel MyGene.info
 //   oracle          → deterministic rule check on each enriched finding
 //   cf-synthesizer  → CF Workers AI: brief plain-language enrichment summary
 //
@@ -14,6 +14,14 @@ import { batchLookupVariants, lookupGene } from "./tools.mjs";
 import { oracleRule } from "./oracle.mjs";
 
 const CF_MODEL = "@cf/nvidia/nemotron-3-120b-a12b";
+
+// MyVariant.info supports up to 1000 ids per POST; we batch at 200 with up to 5 concurrent.
+const LOOKUP_BATCH_SIZE   = 200;
+const LOOKUP_CONCURRENCY  = 5;
+// Oracle bulk mode: don't flood the SSE stream with per-rsid events when set is large.
+const ORACLE_BULK_THRESHOLD = 20;
+// Cap gene lookups; run them all in parallel.
+const GENE_LOOKUP_CAP = 20;
 
 async function cfAiRun(accountId, apiToken, messages) {
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${CF_MODEL}`;
@@ -38,6 +46,24 @@ async function cfAiRun(accountId, apiToken, messages) {
     typeof result?.generated_text === "string" ? result.generated_text :
     (Array.isArray(result?.choices) ? result.choices[0]?.message?.content ?? "" : "");
   return { text };
+}
+
+// Batch rsids into groups of LOOKUP_BATCH_SIZE and run LOOKUP_CONCURRENCY groups at a time.
+async function concurrentBatchLookup(rsids) {
+  const batches = [];
+  for (let i = 0; i < rsids.length; i += LOOKUP_BATCH_SIZE) {
+    batches.push(rsids.slice(i, i + LOOKUP_BATCH_SIZE));
+  }
+
+  const variantData = {};
+  for (let i = 0; i < batches.length; i += LOOKUP_CONCURRENCY) {
+    const group = batches.slice(i, i + LOOKUP_CONCURRENCY);
+    const results = await Promise.all(group.map((b) => batchLookupVariants(b)));
+    for (const result of results) {
+      Object.assign(variantData, result);
+    }
+  }
+  return variantData;
 }
 
 export async function* orchestrateMeshAnalysis(findingSummaries) {
@@ -72,23 +98,27 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
     return;
   }
 
-  // ── Step 2: kb-curator — batch variant lookup (MyVariant.info) ────────────
+  // ── Step 2: kb-curator — concurrent batched variant lookup ─────────────────
   const rsids = findingSummaries.map((f) => f.rsid);
+  const batchCount = Math.ceil(rsids.length / LOOKUP_BATCH_SIZE);
 
   yield {
     type: "agent-start",
     agent: "kb-curator",
-    summary: `Querying MyVariant.info for ${rsids.length} variants…`,
+    summary: `Querying MyVariant.info for ${rsids.length} variants in ${batchCount} batch${batchCount > 1 ? "es" : ""} (${Math.min(batchCount, LOOKUP_CONCURRENCY)} concurrent)…`,
   };
 
   yield {
     type: "tool-call",
     agent: "kb-curator",
     tool: "batch_lookup_variants",
-    input: { rsids: rsids.join(","), fields: "clinvar,gnomad.af,pharmgkb,dbsnp.gene" },
+    input: {
+      rsids: rsids.length <= 6 ? rsids.join(",") : `${rsids.length} rsids`,
+      fields: "clinvar,gnomad.af,pharmgkb,dbsnp.gene",
+    },
   };
 
-  const variantData = await batchLookupVariants(rsids);
+  const variantData = await concurrentBatchLookup(rsids);
   const found = Object.values(variantData).filter((v) => v && !v.notFound).length;
 
   yield {
@@ -98,42 +128,53 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
     result: { fetched: rsids.length, found },
   };
 
-  // ── Step 2b: gene lookups for pharmacogenomics + disease entries ──────────
+  // ── Step 2b: parallel gene lookups ────────────────────────────────────────
   const geneSymbols = [
     ...new Set(
       findingSummaries
-        .filter((f) => f.category === "pharmacogenomics" || f.category === "health/disease")
+        .filter((f) =>
+          f.category === "pharmacogenomics" ||
+          f.category === "disease-risk" ||
+          f.category === "health/disease",
+        )
         .map((f) => f.gene)
         .filter(Boolean),
     ),
-  ].slice(0, 8); // cap at 8 gene lookups
+  ].slice(0, GENE_LOOKUP_CAP);
 
   const geneData = {};
-  for (const symbol of geneSymbols) {
+  if (geneSymbols.length > 0) {
     yield {
       type: "tool-call",
       agent: "kb-curator",
       tool: "lookup_gene",
-      input: { symbol },
+      input: { symbols: geneSymbols.join(","), count: geneSymbols.length },
     };
 
-    const result = await lookupGene(symbol);
-    geneData[symbol] = result;
+    const geneResults = await Promise.all(
+      geneSymbols.map(async (symbol) => ({ symbol, result: await lookupGene(symbol) })),
+    );
+    for (const { symbol, result } of geneResults) {
+      geneData[symbol] = result;
+    }
 
     yield {
       type: "tool-result",
       agent: "kb-curator",
       tool: "lookup_gene",
-      result: result ? { symbol, name: result.name, hasSummary: !!result.summary } : null,
+      result: {
+        fetched: geneSymbols.length,
+        found: geneResults.filter((g) => g.result).length,
+      },
     };
   }
 
-  const toolCalls = 1 + geneSymbols.length; // 1 batch + N gene lookups
+  const toolCalls = 1 + (geneSymbols.length > 0 ? 1 : 0);
 
   yield {
     type: "agent-done",
     agent: "kb-curator",
-    summary: `${toolCalls} API calls — ${found}/${rsids.length} variants annotated · ${Object.keys(geneData).length} genes fetched`,
+    summary: `${toolCalls} MCP call${toolCalls > 1 ? "s" : ""} — ${found}/${rsids.length} variants annotated · ${Object.keys(geneData).length} genes fetched`,
   };
 
   // ── Step 3: Oracle reviews each enriched finding ───────────────────────────
@@ -144,6 +185,9 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
   };
 
   const oracleResults = [];
+  const approvedEnrichments = {};
+  const bulk = found > ORACLE_BULK_THRESHOLD;
+
   for (const rsid of rsids) {
     const enrich = variantData[rsid];
     if (!enrich || enrich.notFound) continue;
@@ -160,26 +204,43 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
     });
 
     oracleResults.push({ rsid, verdict: ruling.verdict, reason: ruling.reason });
-    yield {
-      type: "oracle-ruling",
-      rsid,
-      verdict: ruling.verdict,
-      reason: ruling.reason,
-      invariant: ruling.invariant,
-    };
-  }
+    if (ruling.verdict !== "deny") {
+      approvedEnrichments[rsid] = enrich;
+    }
 
-  const approvedEnrichments = {};
-  for (const r of oracleResults) {
-    if (r.verdict !== "deny") {
-      approvedEnrichments[r.rsid] = variantData[r.rsid];
+    // In individual mode, yield per-rsid events; in bulk mode save events for denied only.
+    if (!bulk) {
+      yield {
+        type: "oracle-ruling",
+        rsid,
+        verdict: ruling.verdict,
+        reason: ruling.reason,
+        invariant: ruling.invariant,
+      };
+    } else if (ruling.verdict === "deny") {
+      yield {
+        type: "oracle-ruling",
+        rsid,
+        verdict: ruling.verdict,
+        reason: ruling.reason,
+        invariant: ruling.invariant,
+      };
     }
   }
 
   const allowCount = oracleResults.filter((r) => r.verdict === "allow").length;
-  const denyCount = oracleResults.filter((r) => r.verdict === "deny").length;
+  const denyCount  = oracleResults.filter((r) => r.verdict === "deny").length;
 
-  // ── Step 4: CF Workers AI summary of enrichment (opt-in, requires CF creds) ─
+  if (bulk) {
+    yield {
+      type: "oracle-ruling",
+      agent: "oracle",
+      verdict: allowCount > denyCount ? "allow" : "revise",
+      reason: `${allowCount} approved · ${denyCount} denied (bulk review of ${oracleResults.length} variants)`,
+    };
+  }
+
+  // ── Step 4: CF Workers AI summary of enrichment ────────────────────────────
   if (hasCF && found > 0) {
     yield {
       type: "agent-start",
@@ -188,7 +249,7 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
     };
 
     const topFindings = Object.entries(approvedEnrichments)
-      .slice(0, 10)
+      .slice(0, 15)
       .map(([rsid, e]) => {
         const parts = [];
         if (e.clinvarSignificance) parts.push(`ClinVar: ${e.clinvarSignificance}`);
