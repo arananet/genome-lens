@@ -89,7 +89,7 @@ function MeshEventFeed({ events, status }: { events: MeshEvent[]; status: string
   return (
     <div className="space-y-2">
       <p className="text-[10px] uppercase tracking-wider font-medium text-white/30">
-        Event log · real-time from /api/mesh-analyze
+        Event log · KB enrichment pass (rsids only) + ClinVar pathogenic pass
       </p>
 
       <div className="rounded-xl border border-white/8 bg-black/20 max-h-56 overflow-y-auto text-xs font-mono space-y-px p-2">
@@ -507,7 +507,7 @@ export function MeshPanel({ genome, findings }: Props) {
           <MeshCanvas />
         </div>
         <p className="mt-1.5 text-[10px] text-white/20">
-          Live graph of the real pipeline · privacy-warden → kb-curator → myvariant.info / mygene.info → Oracle → cf-synthesizer
+          Pass 1: 17-entry curated KB · Pass 2: pathogenic hits from full-genome ClinVar scan (all {summary.parsedCount.toLocaleString()} variants)
         </p>
       </div>
 
