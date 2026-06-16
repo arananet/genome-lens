@@ -17,6 +17,7 @@ import {
   readGlossaryPage,
 } from "./storage.mjs";
 import { orchestrateMeshAnalysis } from "./mesh/orchestrator.mjs";
+import { scanVariantsForPathogenic } from "./mesh/tools.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ?? 3000;
@@ -182,6 +183,73 @@ app.post("/api/mesh-analyze", async (req, res) => {
   } catch (err) {
     console.error("[mesh-analyze] error:", err);
     res.write(`data: ${JSON.stringify({ type: "error", message: String(err.message) })}\n\n`);
+  }
+
+  res.end();
+});
+
+// ── Full-genome ClinVar pathogenic scan (SSE) ────────────────────────────────
+// Accepts all rsids from the uploaded genome (no genotypes, no file content).
+// Batches them through MyVariant.info in groups of 1000 and streams back only
+// Pathogenic / Likely pathogenic ClinVar hits in real time.
+
+app.post("/api/clinvar-scan", express.json({ limit: "25mb" }), async (req, res) => {
+  const { rsids } = req.body ?? {};
+
+  if (!Array.isArray(rsids) || rsids.length === 0) {
+    return res.status(400).json({ error: "rsids must be a non-empty array" });
+  }
+  if (rsids.length > 1_200_000) {
+    return res.status(400).json({ error: "rsids array must not exceed 1,200,000 items" });
+  }
+
+  // Spot-validate: every item must look like a dbSNP rsid
+  for (const id of rsids.slice(0, 200)) {
+    if (typeof id !== "string" || !/^rs\d+$/.test(id)) {
+      return res.status(400).json({ error: `Invalid rsid: ${String(id).slice(0, 20)}` });
+    }
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const write = (obj) => {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+      if (typeof res.flush === "function") res.flush();
+    }
+  };
+
+  // Keep the connection alive through the long scan
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded) {
+      res.write(": ping\n\n");
+      if (typeof res.flush === "function") res.flush();
+    }
+  }, 15_000);
+
+  write({ type: "clinvar-scan-start", total: rsids.length });
+  console.log(`[clinvar-scan] starting scan of ${rsids.length} rsids`);
+
+  try {
+    let totalHits = 0;
+    await scanVariantsForPathogenic(rsids, ({ scanned, total, batchHits }) => {
+      totalHits += batchHits.length;
+      write({ type: "clinvar-batch-progress", scanned, total, hits: totalHits });
+      for (const hit of batchHits) {
+        write({ type: "clinvar-hit", ...hit });
+      }
+    });
+    write({ type: "clinvar-scan-done", scanned: rsids.length, total: rsids.length, hits: totalHits });
+    console.log(`[clinvar-scan] done — ${totalHits} pathogenic variants found in ${rsids.length} rsids`);
+  } catch (err) {
+    console.error("[clinvar-scan] error:", err);
+    write({ type: "clinvar-scan-error", message: String(err.message) });
+  } finally {
+    clearInterval(heartbeat);
   }
 
   res.end();

@@ -48,6 +48,8 @@ const NODE_DEFS: NodeDef[] = [
   // Real external APIs called by kb-curator
   { id: "myvariant-info",   label: "myvariant.info", icon: "🧬", kind: "mcp",    fx: 0.30, fy: 0.82 },
   { id: "mygene-info",      label: "mygene.info",    icon: "🔬", kind: "mcp",    fx: 0.46, fy: 0.82 },
+  // Full-genome ClinVar pathogenic scan (runs in parallel with mesh-analyze pipeline)
+  { id: "clinvar-scanner",  label: "clinvar-scan",   icon: "🔍", kind: "agent",  fx: 0.50, fy: 0.12 },
 ];
 
 const EDGE_PAIRS: [string, string][] = [
@@ -59,6 +61,8 @@ const EDGE_PAIRS: [string, string][] = [
   ["oracle",         "data-out"],
   ["kb-curator",     "myvariant-info"],
   ["kb-curator",     "mygene-info"],
+  ["data-in",        "clinvar-scanner"],
+  ["clinvar-scanner","data-out"],
 ];
 
 // ── Color palette ─────────────────────────────────────────────────────────────
