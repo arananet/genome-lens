@@ -164,7 +164,6 @@ async function streamMeshAnalysis(
   const summaries = findings
     .filter((f) => f.covered)
     .sort((a, b) => (a.entry.tier < b.entry.tier ? -1 : 1))
-    .slice(0, 30)
     .map((f) => ({ rsid: f.entry.rsid, gene: f.entry.gene, category: f.entry.category, tier: f.entry.tier }));
   await sendToMeshAnalyze(summaries, onEvent, onEnrichment);
 }
@@ -336,7 +335,7 @@ export const useGenomeStore = create<GenomeState>((set) => ({
             set({ clinvarScanStatus: "done" });
             if (collectedHits.length > 0) {
               // Second mesh pass: enrich the real pathogenic hits from the full-genome scan
-              const hitSummaries = collectedHits.slice(0, 40).map((h) => ({
+              const hitSummaries = collectedHits.slice(0, 500).map((h) => ({
                 rsid: h.rsid, gene: h.gene ?? "", category: "disease-risk", tier: "A",
               }));
               set({ meshStatus: "running" });
@@ -385,7 +384,7 @@ export const useGenomeStore = create<GenomeState>((set) => ({
           } else if (event.type === "clinvar-scan-done") {
             set({ clinvarScanStatus: "done" });
             if (collectedHitsZip.length > 0) {
-              const hitSummaries = collectedHitsZip.slice(0, 40).map((h) => ({
+              const hitSummaries = collectedHitsZip.slice(0, 500).map((h) => ({
                 rsid: h.rsid, gene: h.gene ?? "", category: "disease-risk", tier: "A",
               }));
               set({ meshStatus: "running" });
