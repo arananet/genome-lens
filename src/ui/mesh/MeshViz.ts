@@ -38,32 +38,27 @@ interface Particle {
 
 const NODE_DEFS: NodeDef[] = [
   // Data I/O
-  { id: "data-in",          label: "file",           icon: "📄", kind: "data",   fx: 0.04, fy: 0.33 },
-  { id: "data-out",         label: "report",         icon: "📊", kind: "data",   fx: 0.96, fy: 0.33 },
-  // Agents (pipeline row)
-  { id: "parser-smith",     label: "parser-smith",   icon: "⚙",  kind: "agent",  fx: 0.18, fy: 0.33 },
-  { id: "kb-curator",       label: "kb-curator",     icon: "📚", kind: "agent",  fx: 0.35, fy: 0.33 },
-  { id: "privacy-warden",   label: "privacy-warden", icon: "🔒", kind: "agent",  fx: 0.52, fy: 0.33 },
-  { id: "oracle",           label: "Oracle",         icon: "◈",  kind: "oracle", fx: 0.69, fy: 0.33 },
-  { id: "ui-polisher",      label: "ui-polisher",    icon: "✦",  kind: "agent",  fx: 0.84, fy: 0.33 },
-  // MCP servers (cluster below kb-curator)
-  { id: "biothings-mcp",    label: "biothings",      icon: "🧬", kind: "mcp",    fx: 0.24, fy: 0.75 },
-  { id: "gget-mcp",         label: "gget",           icon: "🔍", kind: "mcp",    fx: 0.35, fy: 0.83 },
-  { id: "opengenes-mcp",    label: "opengenes",      icon: "🔬", kind: "mcp",    fx: 0.46, fy: 0.75 },
-  { id: "synergy-age-mcp",  label: "synergy-age",    icon: "💊", kind: "mcp",    fx: 0.35, fy: 0.65 },
+  { id: "data-in",          label: "rsids",          icon: "📄", kind: "data",   fx: 0.04, fy: 0.42 },
+  { id: "data-out",         label: "results",        icon: "📊", kind: "data",   fx: 0.96, fy: 0.42 },
+  // Real pipeline agents
+  { id: "privacy-warden",   label: "privacy-warden", icon: "🔒", kind: "agent",  fx: 0.20, fy: 0.42 },
+  { id: "kb-curator",       label: "kb-curator",     icon: "📚", kind: "agent",  fx: 0.38, fy: 0.42 },
+  { id: "oracle",           label: "Oracle",         icon: "◈",  kind: "oracle", fx: 0.58, fy: 0.42 },
+  { id: "cf-synthesizer",   label: "cf-synthesizer", icon: "✦",  kind: "agent",  fx: 0.78, fy: 0.42 },
+  // Real external APIs called by kb-curator
+  { id: "myvariant-info",   label: "myvariant.info", icon: "🧬", kind: "mcp",    fx: 0.30, fy: 0.82 },
+  { id: "mygene-info",      label: "mygene.info",    icon: "🔬", kind: "mcp",    fx: 0.46, fy: 0.82 },
 ];
 
 const EDGE_PAIRS: [string, string][] = [
-  ["data-in",        "parser-smith"],
-  ["parser-smith",   "kb-curator"],
-  ["kb-curator",     "privacy-warden"],
-  ["privacy-warden", "oracle"],
-  ["oracle",         "ui-polisher"],
-  ["ui-polisher",    "data-out"],
-  ["kb-curator",     "biothings-mcp"],
-  ["kb-curator",     "gget-mcp"],
-  ["kb-curator",     "opengenes-mcp"],
-  ["kb-curator",     "synergy-age-mcp"],
+  ["data-in",        "privacy-warden"],
+  ["privacy-warden", "kb-curator"],
+  ["kb-curator",     "oracle"],
+  ["oracle",         "cf-synthesizer"],
+  ["cf-synthesizer", "data-out"],
+  ["oracle",         "data-out"],
+  ["kb-curator",     "myvariant-info"],
+  ["kb-curator",     "mygene-info"],
 ];
 
 // ── Color palette ─────────────────────────────────────────────────────────────
