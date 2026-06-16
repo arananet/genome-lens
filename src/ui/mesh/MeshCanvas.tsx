@@ -12,6 +12,8 @@ export function MeshCanvas() {
 
   const meshEvents = useGenomeStore((s) => s.meshEvents);
   const meshStatus = useGenomeStore((s) => s.meshStatus);
+  const clinvarScanStatus = useGenomeStore((s) => s.clinvarScanStatus);
+  const clinvarScanProgress = useGenomeStore((s) => s.clinvarScanProgress);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -40,6 +42,26 @@ export function MeshCanvas() {
     }
     processedRef.current = meshEvents.length;
   }, [meshEvents]);
+
+  useEffect(() => {
+    const viz = vizRef.current;
+    if (!viz) return;
+    if (clinvarScanStatus === "running") {
+      viz.setStatus("clinvar-scanner", "running");
+      viz.activateEdge("data-in", "clinvar-scanner", true);
+      if (clinvarScanProgress) {
+        viz.burst("data-in", "clinvar-scanner", 2);
+      }
+    } else if (clinvarScanStatus === "done") {
+      viz.setStatus("clinvar-scanner", "done");
+      viz.activateEdge("data-in", "clinvar-scanner", false);
+      viz.activateEdge("clinvar-scanner", "data-out", true);
+      viz.burst("clinvar-scanner", "data-out", 6);
+    } else if (clinvarScanStatus === "error") {
+      viz.setStatus("clinvar-scanner", "error");
+      viz.activateEdge("data-in", "clinvar-scanner", false);
+    }
+  }, [clinvarScanStatus, clinvarScanProgress]);
 
   return (
     <canvas

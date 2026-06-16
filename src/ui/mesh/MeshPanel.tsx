@@ -6,7 +6,7 @@ import {
   type MeshSummary,
 } from "../../analysis/mesh-review";
 import type { ParsedGenome } from "../../parse/types";
-import { useGenomeStore, type MeshEvent } from "../../state/store";
+import { useGenomeStore, type MeshEvent, type ClinvarHit } from "../../state/store";
 import { MeshCanvas } from "./MeshCanvas";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 
@@ -324,6 +324,97 @@ function CategoryBreakdown({ breakdown }: { breakdown: MeshSummary["breakdown"] 
   );
 }
 
+// ── Full-genome ClinVar pathogenic scan results ───────────────────────────────
+
+function ClinvarHitCard({ hit }: { hit: ClinvarHit }) {
+  const isPathogenic = /^pathogenic$/i.test(hit.significance);
+  return (
+    <div
+      className={`rounded-lg border px-3 py-2 space-y-0.5 ${
+        isPathogenic ? "border-red-500/30 bg-red-500/8" : "border-amber-500/30 bg-amber-500/8"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-mono text-white/80">{hit.rsid}</span>
+        <span
+          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+            isPathogenic ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-300"
+          }`}
+        >
+          {hit.significance}
+        </span>
+      </div>
+      {hit.gene && (
+        <p className="text-[10px] text-white/45">
+          Gene: <span className="text-white/65">{hit.gene}</span>
+        </p>
+      )}
+      {hit.condition && (
+        <p className="text-[10px] text-white/45 truncate">{hit.condition}</p>
+      )}
+    </div>
+  );
+}
+
+function ClinvarHitsPanel() {
+  const clinvarHits = useGenomeStore((s) => s.clinvarHits);
+  const clinvarScanStatus = useGenomeStore((s) => s.clinvarScanStatus);
+  const clinvarScanProgress = useGenomeStore((s) => s.clinvarScanProgress);
+
+  if (clinvarScanStatus === "idle") return null;
+
+  const pct = clinvarScanProgress && clinvarScanProgress.total > 0
+    ? Math.round((clinvarScanProgress.scanned / clinvarScanProgress.total) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-wider font-medium text-white/30">
+          Full-genome ClinVar pathogenic scan
+        </p>
+        {clinvarScanStatus === "running" && (
+          <span className="text-[10px] text-indigo-300 flex items-center gap-1">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-indigo-400 animate-pulse" />
+            {clinvarScanProgress
+              ? `${clinvarScanProgress.scanned.toLocaleString()} / ${clinvarScanProgress.total.toLocaleString()} rsids`
+              : "scanning…"}
+          </span>
+        )}
+        {clinvarScanStatus === "done" && (
+          <span className="text-[10px] text-emerald-400">✓ complete · {clinvarHits.length} hit{clinvarHits.length !== 1 ? "s" : ""}</span>
+        )}
+        {clinvarScanStatus === "error" && (
+          <span className="text-[10px] text-red-400">scan error</span>
+        )}
+      </div>
+
+      {clinvarScanStatus === "running" && clinvarScanProgress && (
+        <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+          <div
+            className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+
+      {clinvarHits.length > 0 && (
+        <div className="space-y-1.5 max-h-72 overflow-y-auto">
+          {clinvarHits.map((hit, i) => (
+            <ClinvarHitCard key={`${hit.rsid}-${i}`} hit={hit} />
+          ))}
+        </div>
+      )}
+
+      {clinvarScanStatus === "done" && clinvarHits.length === 0 && (
+        <p className="text-xs text-emerald-400/70">
+          No pathogenic or likely pathogenic variants detected in your genome.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function MeshPanel({ genome, findings }: Props) {
@@ -429,6 +520,9 @@ export function MeshPanel({ genome, findings }: Props) {
       {Object.keys(meshEnrichments).length > 0 && (
         <EnrichmentCards enrichments={meshEnrichments} />
       )}
+
+      {/* Full-genome ClinVar pathogenic scan results */}
+      <ClinvarHitsPanel />
 
       {/* Category breakdown */}
       {summary.coveredCount > 0 && <CategoryBreakdown breakdown={summary.breakdown} />}
