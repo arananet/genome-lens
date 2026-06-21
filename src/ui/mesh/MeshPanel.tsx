@@ -74,7 +74,8 @@ const AGENT_META: Record<string, { icon: string; role: string }> = {
   "privacy-warden": { icon: "🔒", role: "guard" },
   "kb-curator": { icon: "📚", role: "enrich" },
   oracle: { icon: "◈", role: "review" },
-  "cf-synthesizer": { icon: "✦", role: "summarize" },
+  "cf-synthesizer": { icon: "✦", role: "synthesize" },
+  "ui-polisher": { icon: "✨", role: "polish" },
 };
 
 function MeshEventFeed({ events, status }: { events: MeshEvent[]; status: string }) {
@@ -89,7 +90,7 @@ function MeshEventFeed({ events, status }: { events: MeshEvent[]; status: string
   return (
     <div className="space-y-2">
       <p className="text-[10px] uppercase tracking-wider font-medium text-white/30">
-        Event log · MCP enrichment (KB + genome sample) · ClinVar pathogenic pass
+        Event log · 5 LLM agents + Oracle governance · ClinVar pathogenic pass
       </p>
 
       <div className="rounded-xl border border-white/8 bg-black/20 max-h-56 overflow-y-auto text-xs font-mono space-y-px p-2">
@@ -210,22 +211,27 @@ function EventLine({ event }: { event: MeshEvent }) {
 function EnrichmentCards({
   enrichments,
 }: {
-  enrichments: Record<string, { rsid: string; clinvarSignificance: string | null; gnomadAf: number | null; pharmgkbId: string | null }>;
+  enrichments: Record<string, { rsid: string; clinvarSignificance: string | null; gnomadAf: number | null; pharmgkbId: string | null; curatorNote?: string }>;
 }) {
   const entries = Object.values(enrichments).filter(
-    (e) => e.clinvarSignificance || e.gnomadAf != null || e.pharmgkbId,
+    (e) => e.clinvarSignificance || e.gnomadAf != null || e.pharmgkbId || e.curatorNote,
   );
   if (!entries.length) return null;
 
   return (
     <div>
       <p className="mb-2 text-[10px] uppercase tracking-wider font-medium text-white/30">
-        Live enrichment from MyVariant.info · {entries.length} variants
+        Live enrichment from MyVariant.info + LLM curator · {entries.length} variants
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
         {entries.slice(0, 12).map((e) => (
           <div key={e.rsid} className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 space-y-0.5">
             <p className="text-xs font-mono text-white/70">{e.rsid}</p>
+            {e.curatorNote && (
+              <p className="text-[10px] text-indigo-300/70 italic leading-relaxed">
+                {e.curatorNote}
+              </p>
+            )}
             {e.clinvarSignificance && (
               <p className="text-[10px] text-white/45">
                 ClinVar: <span className="text-white/65">{e.clinvarSignificance}</span>
@@ -507,7 +513,7 @@ export function MeshPanel({ genome, findings }: Props) {
           <MeshCanvas />
         </div>
         <p className="mt-1.5 text-[10px] text-white/20">
-          Pass 1: curated KB + {summary.parsedCount.toLocaleString()}-variant genome sample → MCP enrichment · Pass 2: pathogenic hits from ClinVar full scan
+          privacy-warden → kb-curator (MCP + LLM) → Oracle (invariants + LLM review + revise loop) → cf-synthesizer → ui-polisher · ClinVar full scan in parallel
         </p>
       </div>
 

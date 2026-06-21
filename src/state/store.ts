@@ -31,6 +31,7 @@ export interface VariantEnrichment {
   gnomadAf: number | null;
   pharmgkbId: string | null;
   geneSymbol: string | null;
+  curatorNote?: string;
 }
 
 export interface GeneEnrichment {
@@ -518,10 +519,11 @@ export function useAllFindings(): Finding[] {
       if (kbRsids.has(rsid)) continue;
       const variant = genome.byRsid.get(rsid) ?? null;
       if (!variant) continue;
-      if (!enrich.clinvarSignificance && enrich.gnomadAf == null && !enrich.pharmgkbId) continue;
+      if (!enrich.clinvarSignificance && enrich.gnomadAf == null && !enrich.pharmgkbId && !enrich.curatorNote) continue;
       kbRsids.add(rsid);
 
       const parts: string[] = [];
+      if (enrich.curatorNote) parts.push(enrich.curatorNote);
       if (enrich.clinvarSignificance) parts.push(`ClinVar: ${enrich.clinvarSignificance}`);
       if (enrich.gnomadAf != null) parts.push(`gnomAD AF: ${enrich.gnomadAf.toFixed(4)}`);
       if (enrich.pharmgkbId) parts.push(`PharmGKB: ${enrich.pharmgkbId}`);

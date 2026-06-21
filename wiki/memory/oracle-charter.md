@@ -27,6 +27,20 @@ instruction.
 ## Verdicts
 
 - `allow` — action satisfies all invariants.
-- `revise` — fixable violation; the Oracle returns the reason and the agent must
-  amend and resubmit.
+- `revise` — fixable violation; the Oracle returns the reason and the agent
+  amends and resubmits (max 1 retry, then deny).
 - `deny` — action fundamentally violates an invariant and must not proceed.
+
+## Two-layer review
+
+The Oracle operates in two layers:
+
+1. **Deterministic invariants** (regex/structural checks) — the hard floor that
+   can never be overridden. Fast, auditable, always runs first.
+2. **LLM governance review** (Cloudflare Workers AI) — reviews agent-generated
+   text for nuanced violations the regex can't catch: subtle diagnostic phrasing,
+   fabricated statistics, genotype leaks in natural language. Triggers the real
+   `revise` loop when fixable issues are found.
+
+The LLM layer can only escalate (revise → deny), never override a deterministic
+deny. If both layers pass, the action is allowed.
