@@ -92,6 +92,10 @@ function applyEvent(viz: MeshViz, event: MeshEvent) {
         viz.setStatus("cf-synthesizer", "running");
         viz.activateEdge("oracle", "cf-synthesizer", true);
         viz.burst("oracle", "cf-synthesizer", 5);
+      } else if (event.agent === "ui-polisher") {
+        viz.setStatus("ui-polisher", "running");
+        viz.activateEdge("cf-synthesizer", "ui-polisher", true);
+        viz.burst("cf-synthesizer", "ui-polisher", 5);
       }
       break;
     }
@@ -127,6 +131,16 @@ function applyEvent(viz: MeshViz, event: MeshEvent) {
           viz.setStatus("privacy-warden", "done");
           viz.activateEdge("data-in", "privacy-warden", false);
         }
+      } else if (event.agent === "ui-polisher") {
+        if (event.verdict === "deny") {
+          viz.setStatus("ui-polisher", "error");
+        } else {
+          viz.setStatus("ui-polisher", "done");
+        }
+      } else if (event.verdict === "revise") {
+        viz.setStatus("oracle", "revise");
+        viz.activateEdge("oracle", "kb-curator", true);
+        viz.burst("oracle", "kb-curator", 4);
       } else {
         viz.burst("kb-curator", "oracle", 2);
       }
@@ -148,8 +162,14 @@ function applyEvent(viz: MeshViz, event: MeshEvent) {
       if (event.agent === "cf-synthesizer") {
         viz.setStatus("cf-synthesizer", "done");
         viz.activateEdge("oracle", "cf-synthesizer", false);
-        viz.activateEdge("cf-synthesizer", "data-out", true);
-        viz.burst("cf-synthesizer", "data-out", 4);
+      } else if (event.agent === "ui-polisher") {
+        viz.setStatus("ui-polisher", "done");
+        viz.activateEdge("cf-synthesizer", "ui-polisher", false);
+        viz.activateEdge("ui-polisher", "data-out", true);
+        viz.burst("ui-polisher", "data-out", 4);
+      } else if (event.agent === "kb-curator" && typeof event.text === "string" && event.text.includes("Revised")) {
+        viz.burst("oracle", "kb-curator", 3);
+        viz.burst("kb-curator", "oracle", 3);
       }
       break;
     }

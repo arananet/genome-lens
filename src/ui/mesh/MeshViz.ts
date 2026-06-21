@@ -40,14 +40,15 @@ const NODE_DEFS: NodeDef[] = [
   // Data I/O
   { id: "data-in",          label: "rsids",          icon: "📄", kind: "data",   fx: 0.04, fy: 0.42 },
   { id: "data-out",         label: "results",        icon: "📊", kind: "data",   fx: 0.96, fy: 0.42 },
-  // Real pipeline agents
-  { id: "privacy-warden",   label: "privacy-warden", icon: "🔒", kind: "agent",  fx: 0.20, fy: 0.42 },
-  { id: "kb-curator",       label: "kb-curator",     icon: "📚", kind: "agent",  fx: 0.38, fy: 0.42 },
-  { id: "oracle",           label: "Oracle",         icon: "◈",  kind: "oracle", fx: 0.58, fy: 0.42 },
-  { id: "cf-synthesizer",   label: "cf-synthesizer", icon: "✦",  kind: "agent",  fx: 0.78, fy: 0.42 },
+  // Real pipeline agents — each is a genuine LLM call via Cloudflare Workers AI
+  { id: "privacy-warden",   label: "privacy-warden", icon: "🔒", kind: "agent",  fx: 0.17, fy: 0.42 },
+  { id: "kb-curator",       label: "kb-curator",     icon: "📚", kind: "agent",  fx: 0.33, fy: 0.42 },
+  { id: "oracle",           label: "Oracle",         icon: "◈",  kind: "oracle", fx: 0.50, fy: 0.42 },
+  { id: "cf-synthesizer",   label: "cf-synthesizer", icon: "✦",  kind: "agent",  fx: 0.67, fy: 0.42 },
+  { id: "ui-polisher",      label: "ui-polisher",    icon: "✨", kind: "agent",  fx: 0.82, fy: 0.42 },
   // Real external APIs called by kb-curator
-  { id: "myvariant-info",   label: "myvariant.info", icon: "🧬", kind: "mcp",    fx: 0.30, fy: 0.82 },
-  { id: "mygene-info",      label: "mygene.info",    icon: "🔬", kind: "mcp",    fx: 0.46, fy: 0.82 },
+  { id: "myvariant-info",   label: "myvariant.info", icon: "🧬", kind: "mcp",    fx: 0.26, fy: 0.82 },
+  { id: "mygene-info",      label: "mygene.info",    icon: "🔬", kind: "mcp",    fx: 0.42, fy: 0.82 },
   // Full-genome ClinVar pathogenic scan (runs in parallel with mesh-analyze pipeline)
   { id: "clinvar-scanner",  label: "clinvar-scan",   icon: "🔍", kind: "agent",  fx: 0.50, fy: 0.12 },
 ];
@@ -57,8 +58,11 @@ const EDGE_PAIRS: [string, string][] = [
   ["privacy-warden", "kb-curator"],
   ["kb-curator",     "oracle"],
   ["oracle",         "cf-synthesizer"],
-  ["cf-synthesizer", "data-out"],
+  ["cf-synthesizer", "ui-polisher"],
+  ["ui-polisher",    "data-out"],
   ["oracle",         "data-out"],
+  // Revise loop: Oracle can send findings back to kb-curator for revision
+  ["oracle",         "kb-curator"],
   ["kb-curator",     "myvariant-info"],
   ["kb-curator",     "mygene-info"],
   ["data-in",        "clinvar-scanner"],

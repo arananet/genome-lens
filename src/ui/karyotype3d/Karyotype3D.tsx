@@ -2,7 +2,7 @@ import { Canvas } from "@react-three/fiber";
 import { Html, OrbitControls } from "@react-three/drei";
 import { useMemo, useState } from "react";
 import type { Finding } from "../../analysis/types";
-import { useGenomeStore } from "../../state/store";
+import { useGenomeStore, useAllFindings } from "../../state/store";
 import { CATEGORY_COLOR, CATEGORY_LABEL, TIER_SIZE } from "../common/colors";
 import { CHROM_LENGTHS_GRCH37, CHROM_ORDER } from "../trace/chromInfo";
 
@@ -288,7 +288,7 @@ function SelectedPanel({ findings, rsid }: { findings: Finding[]; rsid: string }
 // ── Root export ───────────────────────────────────────────────────────────────
 
 export function Karyotype3D() {
-  const findings     = useGenomeStore((s) => s.findings);
+  const findings     = useAllFindings();
   const selectedRsid = useGenomeStore((s) => s.selectedRsid);
   const selectVariant = useGenomeStore((s) => s.selectVariant);
   const [contextLost, setContextLost] = useState(false);

@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { create } from "zustand";
 import { matchGenome } from "../analysis/match";
 import type { Finding } from "../analysis/types";
@@ -30,6 +31,7 @@ export interface VariantEnrichment {
   gnomadAf: number | null;
   pharmgkbId: string | null;
   geneSymbol: string | null;
+  curatorNote?: string;
 }
 
 export interface GeneEnrichment {
@@ -467,3 +469,98 @@ export const useGenomeStore = create<GenomeState>((set) => ({
     });
   },
 }));
+
+// Derived selector: merges KB findings + ClinVar pathogenic hits + mesh-enriched
+// variants into one unified findings array for the trace view and karyotype.
+// Deduplicates by rsid (KB findings take precedence).
+export function useAllFindings(): Finding[] {
+  const findings = useGenomeStore((s) => s.findings);
+  const clinvarHits = useGenomeStore((s) => s.clinvarHits);
+  const meshEnrichments = useGenomeStore((s) => s.meshEnrichments);
+  const genome = useGenomeStore((s) => s.genome);
+
+  return useMemoShallow(() => {
+    if (!genome) return findings;
+
+    const kbRsids = new Set(findings.map((f) => f.entry.rsid));
+    const extra: Finding[] = [];
+
+    // ClinVar pathogenic hits not already in the KB
+    for (const hit of clinvarHits) {
+      if (kbRsids.has(hit.rsid)) continue;
+      const variant = genome.byRsid.get(hit.rsid) ?? null;
+      if (!variant) continue;
+      kbRsids.add(hit.rsid);
+
+      extra.push({
+        entry: {
+          rsid: hit.rsid,
+          gene: hit.gene ?? "",
+          category: "disease-risk",
+          effectAlleleFwd: "",
+          genotypeInterpretation: {},
+          tier: "A",
+          sources: [{ db: "ClinVar", id: String(hit.clinvarId ?? ""), url: hit.clinvarId ? `https://www.ncbi.nlm.nih.gov/clinvar/variation/${hit.clinvarId}/` : "" }],
+          caveats: "Discovered by full-genome ClinVar scan. Verify with a genetic counselor.",
+        },
+        variant,
+        genotype: variant.genotype,
+        copies: null,
+        interpretation: `${hit.significance}${hit.condition ? ` — ${hit.condition}` : ""}`,
+        covered: true,
+        noCall: false,
+        lowConfidence: false,
+        indeterminate: false,
+      });
+    }
+
+    // Mesh-enriched variants not already covered
+    for (const [rsid, enrich] of Object.entries(meshEnrichments)) {
+      if (kbRsids.has(rsid)) continue;
+      const variant = genome.byRsid.get(rsid) ?? null;
+      if (!variant) continue;
+      if (!enrich.clinvarSignificance && enrich.gnomadAf == null && !enrich.pharmgkbId && !enrich.curatorNote) continue;
+      kbRsids.add(rsid);
+
+      const parts: string[] = [];
+      if (enrich.curatorNote) parts.push(enrich.curatorNote);
+      if (enrich.clinvarSignificance) parts.push(`ClinVar: ${enrich.clinvarSignificance}`);
+      if (enrich.gnomadAf != null) parts.push(`gnomAD AF: ${enrich.gnomadAf.toFixed(4)}`);
+      if (enrich.pharmgkbId) parts.push(`PharmGKB: ${enrich.pharmgkbId}`);
+
+      const cat = enrich.pharmgkbId ? "pharmacogenomic" : "disease-risk";
+      extra.push({
+        entry: {
+          rsid,
+          gene: enrich.geneSymbol ?? "",
+          category: cat as import("../kb/types").KbCategory,
+          effectAlleleFwd: "",
+          genotypeInterpretation: {},
+          tier: "C",
+          sources: [{ db: "MyVariant.info", id: rsid, url: `https://myvariant.info/v1/variant/${rsid}` }],
+          caveats: "Discovered by MCP enrichment scan. Educational only.",
+        },
+        variant,
+        genotype: variant.genotype,
+        copies: null,
+        interpretation: parts.join(" · "),
+        covered: true,
+        noCall: false,
+        lowConfidence: false,
+        indeterminate: false,
+      });
+    }
+
+    return extra.length > 0 ? [...findings, ...extra] : findings;
+  }, [findings, clinvarHits, meshEnrichments, genome]);
+}
+
+// Shallow memoization — avoids re-renders when the output is structurally equal.
+function useMemoShallow<T>(factory: () => T, deps: unknown[]): T {
+  const ref = useRef<{ deps: unknown[]; value: T } | null>(null);
+  const depsChanged = !ref.current || deps.some((d, i) => d !== ref.current!.deps[i]);
+  if (depsChanged) {
+    ref.current = { deps, value: factory() };
+  }
+  return ref.current!.value;
+}

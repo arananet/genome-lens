@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useGenomeStore } from "../../state/store";
+import { useGenomeStore, useAllFindings } from "../../state/store";
 import { CATEGORY_COLOR, CATEGORY_LABEL } from "../common/colors";
 import type { KbCategory } from "../../kb/types";
 import { ChromosomeTrack } from "./ChromosomeTrack";
@@ -8,7 +8,7 @@ import { CHROM_ORDER } from "./chromInfo";
 import { MeshPanel } from "../mesh/MeshPanel";
 
 export function TraceBrowser() {
-  const findings = useGenomeStore((s) => s.findings);
+  const findings = useAllFindings();
   const genome = useGenomeStore((s) => s.genome);
   const selectVariant = useGenomeStore((s) => s.selectVariant);
 
@@ -31,7 +31,7 @@ export function TraceBrowser() {
       {genome && <MeshPanel genome={genome} findings={findings} />}
       <h2 className="text-lg font-semibold">Genome trace</h2>
       <p className="mt-1 text-sm text-white/70">
-        {covered.length} known variant{covered.length === 1 ? "" : "s"} matched in your file. Tap a
+        {covered.length} variant{covered.length === 1 ? "" : "s"} with annotations found. Tap a
         marker to open its detail.
       </p>
 
