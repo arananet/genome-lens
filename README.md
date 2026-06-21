@@ -29,8 +29,10 @@ report into an honest, private, navigable view of what is known and what is not:
   markers, and a detail panel. Rendered with three.js / React Three Fiber.
 - **Agent mesh** — five LLM-powered agents (Cloudflare Workers AI) orchestrated
   via SSE with a two-layer Oracle (deterministic invariants + LLM governance
-  review + real revise loop). MCP enrichment from MyVariant.info, MyGene.info,
-  and full-genome ClinVar pathogenic scan. Live Canvas 2D visualization.
+  review + real revise loop). MCP enrichment via biothings-mcp
+  (@modelcontextprotocol/sdk, stdio transport, HTTP fallback) from
+  MyVariant.info, MyGene.info, plus full-genome ClinVar pathogenic scan.
+  Live Canvas 2D visualization.
 - **Four tiered reports** — health/disease, fitness, body composition, vision.
 - **Clinical report export** — printable/PDF findings report grouped by category
   with tier chips, caveats, and evidence legend.
@@ -136,16 +138,18 @@ flowchart LR
 
     subgraph mesh["Server — Agent Mesh (SSE)"]
         PW["🔒 privacy-warden\nregex + LLM audit"]
-        KC["📚 kb-curator\nMCP fetch + LLM interpret"]
+        subgraph curator["📚 kb-curator agent"]
+            KC["LLM interpret"]
+            MV["MCP: myvariant\n(biothings-mcp)"]
+            MG["MCP: mygene\n(biothings-mcp)"]
+        end
         ORC["◈ Oracle\ninvariants + LLM review\nrevise loop"]
         CF["✦ cf-synthesizer\nLLM narrative"]
         UP["✨ ui-polisher\nLLM copy polish"]
     end
 
-    subgraph mcp["MCP Tools (external APIs)"]
-        MV[MyVariant.info\nbatch POST]
-        MG[MyGene.info]
-        CV[ClinVar full scan\n600K+ rsids]
+    subgraph scan["ClinVar Pathogenic Scan"]
+        CV[direct HTTP\n600K+ rsids]
     end
 
     subgraph ai["Cloudflare Workers AI"]
@@ -157,13 +161,13 @@ flowchart LR
     DETECT -->|GWAS health report| HR
     PARSE -->|variants| KB
     KB -->|rsids only| PW
-    PW -->|approved| KC
+    PW -->|approved| curator
     KC -->|enriched findings| ORC
     ORC -->|revise| KC
     ORC -->|approved| CF
     CF --> UP
     UP -->|SSE stream| STORE
-    KC --> MV & MG
+    MV & MG -.->|MCP stdio\nor HTTP fallback| KC
     PARSE -->|all rsids| CV
     CV -->|pathogenic hits| STORE
     STORE --> UI
@@ -184,25 +188,28 @@ SSE pipeline with real-time event streaming to the browser canvas.
 flowchart TD
     subgraph pipeline["Server-side SSE pipeline (mesh/orchestrator.mjs)"]
         PW["🔒 privacy-warden\n1. Regex pre-filter\n2. LLM privacy audit"]
-        KC["📚 kb-curator\n1. Batch MyVariant.info + MyGene.info\n2. LLM drafts interpretations"]
+        subgraph kc_agent["📚 kb-curator agent"]
+            KC_MCP["MCP tools\nbiothings-mcp\n(HTTP fallback)"]
+            KC_LLM["LLM drafts\ninterpretations"]
+        end
         ORC_REG["◈ Oracle — Layer 1\nDeterministic invariants\n(hard floor, never overridden)"]
         ORC_LLM["◈ Oracle — Layer 2\nLLM governance review\n(catches nuanced violations)"]
         REVISE{"revise?"}
-        KC_RETRY["kb-curator retry\nLLM re-drafts with\nOracle feedback"]
         CF["✦ cf-synthesizer\nLLM narrative synthesis\nfrom enriched data"]
         UP["✨ ui-polisher\nLLM copy polish\ngrade-10 reading level"]
     end
 
-    PW -->|allow| KC
+    PW -->|allow| KC_MCP
     PW -->|deny| BLOCK([pipeline blocked])
-    KC --> ORC_REG
+    KC_MCP --> KC_LLM
+    KC_LLM --> ORC_REG
     ORC_REG -->|deny| DROP([finding dropped])
     ORC_REG -->|pass| ORC_LLM
     ORC_LLM -->|allow| CF
     ORC_LLM -->|deny| DROP
     ORC_LLM -->|revise| REVISE
-    REVISE -->|max 1 retry| KC_RETRY
-    KC_RETRY -->|re-check| ORC_REG
+    REVISE -->|max 1 retry| KC_LLM
+    KC_LLM -->|re-check| ORC_REG
     CF --> UP
     UP -->|Oracle invariant check| DONE([pipeline done])
 ```
@@ -212,7 +219,7 @@ flowchart TD
 | Agent | What it does | LLM call |
 |---|---|---|
 | `privacy-warden` | Regex pre-filter + LLM audit of the outbound payload for subtle privacy leaks | Reviews payload text for genotype patterns, PII, health records |
-| `kb-curator` | Fetches from MyVariant.info + MyGene.info (batched, concurrent), then drafts per-variant interpretations | Generates 1-2 sentence educational interpretation from raw ClinVar/gnomAD/PharmGKB data |
+| `kb-curator` | Owns MCP tools (biothings-mcp via @modelcontextprotocol/sdk, HTTP fallback): fetches from MyVariant.info + MyGene.info, then drafts per-variant interpretations | Generates 1-2 sentence educational interpretation from raw ClinVar/gnomAD/PharmGKB data |
 | `Oracle` | Two-layer review: deterministic regex invariants (hard floor) + LLM governance review with real revise-and-resubmit loop | Reviews all curator-drafted text against invariants, returns ALLOW/REVISE/DENY per finding |
 | `cf-synthesizer` | Drafts a narrative overview from the approved enrichment data | 2-3 paragraph synthesis referencing actual ClinVar classifications and allele frequencies |
 | `ui-polisher` | Polishes the synthesizer output for clarity and reading level | Rewrites for grade-10 readability, removes unexplained jargon, ensures educational tone |

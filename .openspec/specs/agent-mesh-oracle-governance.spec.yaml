@@ -89,6 +89,13 @@ technical_notes: |
   via a second LLM call; the revision is re-checked against Layer 1 only
   (no recursive LLM review) to prevent infinite loops.
 
+  MCP tools: mesh/mcp-client.mjs connects to biothings-mcp via
+  @modelcontextprotocol/sdk StdioClientTransport (spawns `uvx biothings-mcp`).
+  Tools used: biothings_query_many_variants, biothings_query_genes.
+  Falls back to direct HTTP (mesh/tools.mjs safeFetch) if MCP server isn't
+  available (e.g. no Python/uvx on Railway). Full-genome ClinVar scan always
+  uses direct HTTP (bulk batching, 1000/batch × 8 concurrent).
+
   Memory is plain Markdown via node:fs; the charter and roster live in
   wiki/memory/. The mesh is never imported by src/App.tsx, so Vite tree-shakes
   it out of the SPA.

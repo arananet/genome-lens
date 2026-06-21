@@ -27,8 +27,9 @@ description: |
   matches against a static, evidence-tiered knowledge base and enriches findings
   via a server-side agent mesh: five LLM-powered agents (Cloudflare Workers AI)
   orchestrated as an SSE pipeline, governed by a two-layer Oracle (deterministic
-  invariants + LLM governance review with a real revise-and-resubmit loop). MCP
-  enrichment from MyVariant.info, MyGene.info, and a full-genome ClinVar
+  invariants + LLM governance review with a real revise-and-resubmit loop).
+  MCP enrichment via biothings-mcp (@modelcontextprotocol/sdk, stdio transport,
+  with direct HTTP fallback) from MyVariant.info, MyGene.info, and a full-genome ClinVar
   pathogenic scan (600K+ rsids) discover additional variants beyond the curated
   KB. Results are presented through a 2D trace browser, a 3D karyotype with
   idiogram bars, an animated agent mesh Canvas 2D visualization, per-variant
@@ -108,9 +109,11 @@ technical_notes: |
 
   Agent mesh: mesh/orchestrator.mjs — five LLM agents via Cloudflare Workers AI
   (@cf/nvidia/nemotron-3-120b-a12b). Two-layer Oracle: deterministic invariants
-  (hard floor) + LLM governance review with revise loop. MCP tools:
-  MyVariant.info (batch POST, 200/batch, 5 concurrent), MyGene.info, ClinVar
-  full-genome scan (1000/batch, 8 concurrent). ~4-6 LLM calls per pipeline run.
+  (hard floor) + LLM governance review with revise loop. MCP tools via
+  @modelcontextprotocol/sdk (stdio transport to biothings-mcp) with direct
+  HTTP fallback: MyVariant.info (200/batch, 5 concurrent), MyGene.info.
+  ClinVar full-genome scan always uses direct HTTP (1000/batch, 8 concurrent).
+  ~4-6 LLM calls per pipeline run.
 
   The AI explainer is also available as a Cloudflare Worker (worker/).
   Local-only constraint (no genome egress) overrides any conflicting requirement.

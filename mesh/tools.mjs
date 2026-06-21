@@ -1,7 +1,11 @@
-// Real genomics API tools — direct HTTP calls to MyVariant.info and MyGene.info.
-// No mock data, no stubs. Two entry points:
-//   batchLookupVariants  — enrich a small curated set (17-30 rsids) with ClinVar/gnomAD/PharmGKB
-//   scanVariantsForPathogenic — scan the entire genome (600K+ rsids) for ClinVar P/LP variants
+// Genomics API tools — MCP (biothings-mcp) when available, direct HTTP fallback.
+// MCP: spawns biothings-mcp via @modelcontextprotocol/sdk stdio transport.
+// HTTP: direct fetch to MyVariant.info / MyGene.info (no mock data, no stubs).
+//
+// MCP is preferred for curated-set enrichment (batchLookupVariants, lookupGene).
+// Full-genome pathogenic scan always uses direct HTTP (600K+ rsids, bulk batching).
+
+import { mcpBatchLookupVariants, mcpLookupGene, mcpAvailable } from "./mcp-client.mjs";
 
 const UA = "genome-lens/1.0 (educational; not for clinical use)";
 const TIMEOUT = 8_000;
@@ -37,10 +41,16 @@ async function safeFetchScan(url, opts = {}) {
 
 // ── Curated-set enrichment (used by kb-curator agent in mesh-analyze) ─────────
 
-// Batch variant lookup — one POST to myvariant.info for up to 30 rsids.
+// Batch variant lookup — tries MCP (biothings-mcp) first, falls back to direct HTTP.
 // Returns a map of rsid → enrichment (ClinVar significance, gnomAD AF, PharmGKB).
 export async function batchLookupVariants(rsids) {
   if (!rsids.length) return {};
+
+  // MCP path: biothings_query_many_variants via @modelcontextprotocol/sdk
+  const mcpResult = await mcpBatchLookupVariants(rsids);
+  if (mcpResult) return mcpResult;
+
+  // HTTP fallback: direct POST to myvariant.info
   const data = await safeFetch("https://myvariant.info/v1/variant", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -73,8 +83,13 @@ export async function lookupVariant(rsid) {
   return map[rsid] ?? null;
 }
 
-// Gene summary lookup via mygene.info.
+// Gene summary lookup — tries MCP (biothings-mcp) first, falls back to direct HTTP.
 export async function lookupGene(symbol) {
+  // MCP path: biothings_query_genes via @modelcontextprotocol/sdk
+  const mcpResult = await mcpLookupGene(symbol);
+  if (mcpResult) return mcpResult;
+
+  // HTTP fallback: direct GET to mygene.info
   const data = await safeFetch(
     `https://mygene.info/v3/query?q=symbol:${encodeURIComponent(symbol)}&fields=name,summary&species=human&size=1`,
   );
@@ -220,3 +235,6 @@ export async function executeTool(name, input) {
   if (name === "lookup_gene") return lookupGene(input.symbol);
   return null;
 }
+
+export { mcpAvailable } from "./mcp-client.mjs";
+export { closeMcpClient } from "./mcp-client.mjs";
