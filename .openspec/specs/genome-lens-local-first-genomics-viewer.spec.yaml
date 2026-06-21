@@ -9,8 +9,9 @@ status: review
 
 author: "Claude"
 created_at: "2026-06-14"
-updated_at: "2026-06-14"
-# Implemented: parser+KB+analysis+2D/3D/reports UI, AI worker, Railway deploy.
+updated_at: "2026-06-21"
+# Implemented: parser+KB+analysis+2D/3D/reports UI, AI worker, Railway deploy,
+# LLM agent mesh with two-layer Oracle, MCP enrichment, full-genome ClinVar scan.
 
 roles:
   implementer: "@arananet"
@@ -23,19 +24,24 @@ description: |
   raw consumer DNA export (23andMe, AncestryDNA, MyHeritage, VCF v4.x) or a
   structured GWAS health report, which is parsed and analysed entirely in the
   browser — the raw file never leaves the device. For raw genome files, the app
-  matches against a static, evidence-tiered knowledge base and presents
-  associations across health/disease, fitness, body composition, and vision
-  through a 2D trace browser, a 3D karyotype with idiogram bars, an animated
-  agent mesh visualization, per-variant detail, four tiered reports, rsid/gene
-  search, and a printable clinical report (PDF export). For GWAS health reports,
-  it surfaces elevated/reduced risk findings, pharmacogenetics, biomarkers, and
-  hereditary screening in a condensed PDF view. An optional, opt-in AI explainer
-  uses Cloudflare Workers AI to render two-paragraph explanations (what it means
-  + how to reduce risk); it transmits only the single public knowledge-base
-  variant context the user asks about, never the raw genome. A phenotype-driven
-  AI ranking endpoint ranks findings by relevance to a described symptom. The app
-  is responsive (usable on phones) and deploys as a static SPA to Railway. It is
-  an educational tool, not a medical device.
+  matches against a static, evidence-tiered knowledge base and enriches findings
+  via a server-side agent mesh: five LLM-powered agents (Cloudflare Workers AI)
+  orchestrated as an SSE pipeline, governed by a two-layer Oracle (deterministic
+  invariants + LLM governance review with a real revise-and-resubmit loop). MCP
+  enrichment from MyVariant.info, MyGene.info, and a full-genome ClinVar
+  pathogenic scan (600K+ rsids) discover additional variants beyond the curated
+  KB. Results are presented through a 2D trace browser, a 3D karyotype with
+  idiogram bars, an animated agent mesh Canvas 2D visualization, per-variant
+  detail, four tiered reports, rsid/gene search, and a printable clinical report
+  (PDF export). For GWAS health reports, it surfaces elevated/reduced risk
+  findings, pharmacogenetics, biomarkers, and hereditary screening in a condensed
+  PDF view. An optional, opt-in AI explainer uses Cloudflare Workers AI to render
+  two-paragraph explanations (what it means + how to reduce risk); it transmits
+  only the single public knowledge-base variant context the user asks about,
+  never the raw genome. A phenotype-driven AI ranking endpoint ranks findings by
+  relevance to a described symptom. The app is responsive (usable on phones) and
+  deploys as a static SPA to Railway. It is an educational tool, not a medical
+  device.
 
 acceptance_criteria:
   - "Given a 23andMe TSV (#-prefixed headers, rsid/chromosome/position/genotype), when uploaded, then it is auto-detected and normalized to the ParsedGenome schema with source='23andme' and build='GRCh37'."
@@ -80,12 +86,11 @@ qa_notes: |
   data and reload shows the upload screen.
 
 out_of_scope:
-  - "Any server, account system, or cloud sync of genetic data."
+  - "Any account system or cloud sync of genetic data."
   - "Ancestry / ethnicity estimation."
   - "Risk percentages presented as personal prognoses."
   - "Claims of vision improvement, disease cure, or guaranteed body-composition outcomes."
-  - "Pulling live genomics-API data at runtime using the user's genome."
-  - "Sending the raw genome file to the AI explainer or any remote service."
+  - "Sending genotypes or the raw genome file to any remote service (only rsids + public KB metadata leave the browser for MCP enrichment)."
 
 implementation_skill: null
 
@@ -97,9 +102,17 @@ technical_notes: |
   Stack: Vite + TypeScript + React 18, Tailwind, three.js via @react-three/fiber
   + @react-three/drei, visx/d3 for 2D, fflate for zip, Zustand for state, Vitest +
   Testing Library for tests. Parser must stream-parse (~600k lines < 2s target).
-  The AI explainer is a separate Cloudflare Worker (worker/) proxying Workers AI;
-  the SPA targets it via VITE_AI_WORKER_URL. Static SPA deploys to Railway via
-  railway.json + nixpacks.toml, served from dist/ with `serve`.
+
+  Server: Express (server.mjs) on Railway serves the SPA + API endpoints +
+  the SSE agent mesh pipeline (/api/mesh-analyze, /api/clinvar-scan).
+
+  Agent mesh: mesh/orchestrator.mjs — five LLM agents via Cloudflare Workers AI
+  (@cf/nvidia/nemotron-3-120b-a12b). Two-layer Oracle: deterministic invariants
+  (hard floor) + LLM governance review with revise loop. MCP tools:
+  MyVariant.info (batch POST, 200/batch, 5 concurrent), MyGene.info, ClinVar
+  full-genome scan (1000/batch, 8 concurrent). ~4-6 LLM calls per pipeline run.
+
+  The AI explainer is also available as a Cloudflare Worker (worker/).
   Local-only constraint (no genome egress) overrides any conflicting requirement.
 
 linked_issues: []

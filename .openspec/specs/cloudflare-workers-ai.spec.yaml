@@ -2,14 +2,14 @@
 # Fill in all sections before moving status to 'review'.
 # Acceptance criteria are your definition of done — be specific.
 
-title: "Cloudflare Workers AI LLM Provider"
+title: "Cloudflare Workers AI — LLM provider for agent mesh + API endpoints"
 slug: "cloudflare-workers-ai"
 type: feature
 status: review   # draft | review | approved
 
 author: "Claude"
 created_at: "2026-06-14"
-updated_at: "2026-06-14"
+updated_at: "2026-06-21"
 
 roles:
   implementer: "@arananet"
@@ -18,36 +18,69 @@ roles:
   product_owner: "@arananet"
 
 description: |
-  Add Cloudflare Workers AI as a free LLM inference provider for genome-lens.
-  Cloudflare Workers AI offers a free tier (10,000 neurons/day) with open-weight
-  models (Llama 3.1, Phi-3, Gemma 3, etc.) accessible via REST API. This lets
-  genome-lens run local reasoning over genomic data without cost, complementing
-  the holy-bio-mcp database suite already configured. The provider module handles
-  auth via CF_ACCOUNT_ID + CF_API_TOKEN env vars, exposes a simple
-  synchronous `generate()` call, and lists available models.
+  Cloudflare Workers AI is the LLM inference backbone for genome-lens. It
+  powers two layers:
+
+  1. Agent mesh pipeline (mesh/orchestrator.mjs) — every agent is a genuine
+     LLM call via cfAiRun() to the CF REST API:
+     - privacy-warden: LLM privacy audit of outbound payloads
+     - kb-curator: LLM drafts per-variant educational interpretations from
+       raw MyVariant.info/MyGene.info data
+     - Oracle Layer 2: LLM governance review of agent-generated text with
+       real revise-and-resubmit loop
+     - cf-synthesizer: LLM narrative synthesis from enriched data
+     - ui-polisher: LLM copy polish for reading level and tone
+
+  2. Express API endpoints (server.mjs):
+     - POST /api/explain — single-variant two-paragraph explanation
+     - POST /api/synthesize — aggregate findings plain-language summary
+     - POST /api/phenotype-rank — phenotype-driven finding relevance ranking
+
+  Model: @cf/nvidia/nemotron-3-120b-a12b (free tier, 10K neurons/day).
+  Auth: CF_ACCOUNT_ID + CF_API_TOKEN env vars (server-side only, never in
+  the browser bundle). A Python provider module (providers/cloudflare_ai.py)
+  also exists for CLI/scripting use.
+
+  Graceful fallback: if CF credentials are missing, the agent mesh runs with
+  deterministic-only Oracle and data-only agents (no LLM). API endpoints
+  return 503 with an informative message.
 
 acceptance_criteria:
-  - "Given valid CF_ACCOUNT_ID and CF_API_TOKEN env vars, when generate() is called with a prompt and model name, then the module returns the text response string from Cloudflare Workers AI."
-  - "Given an invalid or missing token, when generate() is called, then it raises CloudflareAIError with the HTTP status and error message."
-  - "Given no arguments, when list_models() is called, then it returns a list of recommended free-tier model IDs available on Workers AI."
-  - "Given the module is imported, when CloudflareAIClient is instantiated with explicit account_id and api_token kwargs, then it uses those values instead of env vars."
+  - "Given valid CF_ACCOUNT_ID and CF_API_TOKEN env vars, when the agent mesh pipeline runs, then all five agents make real LLM calls via Cloudflare Workers AI."
+  - "Given the pipeline runs with CF credentials, when kb-curator drafts interpretations, then curatorNote fields are populated in the enrichment data."
+  - "Given the pipeline runs with CF credentials, when the Oracle LLM review flags a text, then the revise loop triggers a second LLM call for the kb-curator."
+  - "Given the pipeline runs with CF credentials, when ui-polisher runs, then it polishes the synthesizer output via an LLM call."
+  - "Given CF credentials are missing, when the pipeline runs, then it completes with regex-only Oracle and no LLM errors."
+  - "Given valid CF credentials, when POST /api/explain is called with a valid variant context, then it returns HTTP 200 with { explanation: string }."
+  - "Given valid CF credentials, when POST /api/synthesize is called with totals and breakdown, then it returns a cached or fresh AI synthesis."
+  - "Given valid CF credentials, when POST /api/phenotype-rank is called with phenotype and findings, then it returns a ranked JSON array."
+  - "Given an invalid or missing token, when any AI endpoint is called, then it returns HTTP 503 with an informative error."
+  - "Given the Python provider, when generate() is called with a prompt, then it returns the text response from Cloudflare Workers AI."
+  - "Given the Python provider, when list_models() is called, then it returns a list of free-tier model IDs starting with '@cf/'."
 
 test_plan:
-  - "Unit test: mock httpx.Client.post to return a 200 JSON payload; assert generate() extracts and returns the 'result.response' field."
-  - "Unit test: mock httpx.Client.post to return a 400 JSON payload with 'errors'; assert generate() raises CloudflareAIError with the error text."
-  - "Unit test: instantiate CloudflareAIClient with explicit kwargs; assert client.account_id and client.api_token match the supplied values."
-  - "Unit test: call list_models(); assert the return value is a non-empty list of strings each starting with '@cf/'."
+  - "Unit test: mock cfAiRun to return a 200 JSON payload; assert orchestrator yields agent-text events with LLM-generated content for each agent."
+  - "Unit test: mock cfAiRun to return an error; assert orchestrator falls back gracefully (no crash, pipeline completes)."
+  - "Unit test (Python): mock httpx.Client.post to return a 200 JSON payload; assert generate() extracts the 'result.response' field."
+  - "Unit test (Python): mock httpx.Client.post to return a 400; assert generate() raises CloudflareAIError."
+  - "Unit test (Python): call list_models(); assert the return value is a non-empty list of strings each starting with '@cf/'."
+  - "Integration test: POST /api/explain with mocked CF response returns { explanation: string }."
+  - "Manual QA: deploy with real CF credentials, upload a genome file, verify all five agents produce LLM text in the event log."
 
 qa_notes: |
-  Manual check: set real CF_ACCOUNT_ID + CF_API_TOKEN, run
-  `python -c "from providers.cloudflare_ai import CloudflareAIClient; c=CloudflareAIClient(); print(c.generate('Summarise BRCA1 in one sentence.'))"`.
-  Expect a non-empty string back within ~5 seconds.
+  Manual check: set real CF_ACCOUNT_ID + CF_API_TOKEN, upload a genome file.
+  In the MeshPanel event log, verify:
+  - privacy-warden shows "LLM privacy audit passed"
+  - kb-curator shows "Drafted N interpretations via Cloudflare Workers AI"
+  - Oracle shows "LLM reviewing N curator-drafted interpretations"
+  - cf-synthesizer shows a multi-sentence narrative
+  - ui-polisher shows polished copy
+  Monitor CF dashboard for neuron usage (expect ~4-6 calls per pipeline run).
 
 out_of_scope:
-  - "Streaming responses — synchronous single-shot calls only for now."
-  - "Cloudflare AI Gateway (caching proxy) — out of scope for this spec."
+  - "Streaming responses — synchronous single-shot calls only."
+  - "Cloudflare AI Gateway (caching proxy)."
   - "Embedding models — text generation only."
-  - "Cloudflare MCP server for infrastructure (KV, D1, R2) — not related to LLM inference."
 
 implementation_skill: null
 
@@ -59,15 +92,24 @@ technical_notes: |
   Cloudflare Workers AI REST endpoint:
     POST https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}
     Header: Authorization: Bearer {api_token}
-    Body: {"prompt": "<text>"} or {"messages": [...]} for chat models
+    Body: {"messages": [...]} for chat models
 
-  Free-tier recommended models for bioinformatics reasoning:
-    @cf/meta/llama-3.1-8b-instruct
-    @cf/microsoft/phi-3-mini-4k-instruct
-    @cf/google/gemma-3-12b-it
+  Model: @cf/nvidia/nemotron-3-120b-a12b (free tier).
 
-  Use httpx (sync) — already a transitive dep of many bioinformatics packages.
-  If httpx is absent, fall back to urllib.request (stdlib only).
+  Response extraction handles multiple CF model output formats:
+    result.response (standard chat), result.generated_text,
+    result.choices[0].message.content (OpenAI-compatible).
+
+  Agent mesh batching strategy:
+    - privacy-warden: 1 LLM call per pipeline run
+    - kb-curator: 1 LLM call per batch of 15 variants
+    - Oracle LLM: 1 call reviewing all texts at once
+    - cf-synthesizer: 1 call
+    - ui-polisher: 1 call
+    Total: ~4-6 LLM calls per run (well within free tier)
+
+  Python provider (providers/cloudflare_ai.py) uses httpx with stdlib
+  urllib.request fallback. Not used by the agent mesh pipeline (Node.js).
 
 linked_issues: []
 linked_prs: []

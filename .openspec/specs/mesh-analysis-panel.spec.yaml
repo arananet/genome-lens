@@ -1,11 +1,11 @@
-title: "Mesh Analysis Panel — Oracle-governed findings summary + AI synthesis"
+title: "Mesh Analysis Panel — live SSE agent pipeline + Oracle governance"
 slug: "mesh-analysis-panel"
 type: feature
 status: review
 
 author: "Claude"
 created_at: "2026-06-14"
-updated_at: "2026-06-14"
+updated_at: "2026-06-21"
 
 roles:
   implementer: "@arananet"
@@ -14,38 +14,60 @@ roles:
   product_owner: "@arananet"
 
 description: |
-  After a genome file is uploaded, show a Mesh Analysis Panel in the Trace view
-  that makes the agent mesh and Oracle governance visible and actionable.
+  After a genome file is uploaded, the Mesh Analysis Panel in the Trace view
+  makes the real agent pipeline visible and interactive. It is driven entirely
+  by SSE events from the server-side orchestrator — no synthetic timers.
 
-  Three layers:
-  1. Agent provenance - parser-smith (parsed N variants), kb-curator (matched M
-     knowledge-base entries), privacy-warden (no data left device).
-  2. Oracle governance summary - the Oracle reviews each covered finding as a
-     report-copy action (checks for diagnostic phrasing / risk percentages /
-     vision-improvement claims). Shows allow/revise/deny counts with a badge.
-  3. AI synthesis (opt-in) - "Synthesize with AI" button sends only aggregate
-     counts (category x tier matrix, no rsids, no genotypes) to /api/synthesize
-     on the Express server -> Cloudflare Workers AI returns a plain-language paragraph.
+  Components:
+  1. Canvas 2D mesh visualization — animated graph of six pipeline nodes
+     (privacy-warden, kb-curator, Oracle, cf-synthesizer, ui-polisher,
+     clinvar-scanner) plus MCP tool nodes (myvariant.info, mygene.info).
+     Node status, edge activation, and particle bursts are driven by real
+     SSE events. The Oracle→kb-curator edge animates during revise loops.
+
+  2. Real-time event log — scrolling feed of every pipeline event: agent
+     starts, MCP tool calls/results, Oracle rulings (allow/revise/deny),
+     LLM-generated text (curator notes, synthesis, polished output), and
+     pipeline completion stats.
+
+  3. Oracle governance header — live allow/flagged counts from the server-side
+     Oracle (falls back to browser-side review before pipeline completes).
+
+  4. Live enrichment cards — per-variant cards showing ClinVar significance,
+     gnomAD allele frequency, PharmGKB IDs, and LLM-drafted curator notes.
+
+  5. Full-genome ClinVar pathogenic scan — progress bar + hit cards for
+     Pathogenic/Likely pathogenic variants discovered across all 600K+ rsids.
+
+  6. AI synthesis (opt-in) — "Synthesize with AI" button sends only aggregate
+     counts to /api/synthesize → Cloudflare Workers AI.
 
 acceptance_criteria:
-  - "Given a genome file is loaded, when the Trace view renders, then MeshPanel shows agent-provenance rows with accurate counts."
-  - "Given covered findings, when the Oracle reviews each as a report-copy action, then the panel shows total allow/flagged counts with a green or amber badge."
+  - "Given a genome file is loaded, when the pipeline starts, then the Canvas 2D mesh shows all six agent nodes and animates transitions driven by real SSE events."
+  - "Given the pipeline is running, when agent-start events arrive, then the corresponding node shows a running spinner and edge particles flow."
+  - "Given the Oracle issues a revise ruling, when the event arrives, then the Oracle→kb-curator edge animates with particles and the Oracle node shows amber status."
+  - "Given the ui-polisher agent runs, when its agent-text event arrives, then the ui-polisher node transitions to done and particles flow to data-out."
+  - "Given the pipeline completes, when pipeline-done arrives, then the event log shows enriched/approved/denied counts and the Oracle header updates."
+  - "Given covered findings, when the Oracle reviews each, then the panel shows total allow/flagged counts with a green or amber badge."
   - "Given the Synthesize button is clicked, when POST /api/synthesize returns, then a plain-language paragraph appears (no genotype data sent)."
   - "Given CF vars are missing, when Synthesize is clicked, then an informative error is shown."
+  - "Given enrichment data includes curatorNote fields, then the enrichment cards display LLM-drafted interpretations in italics."
 
 test_plan:
-  - "Unit test (analysis/mesh-review): reviewAllFindings on standard KB interpretations returns allow for all (no diagnostic phrasing in KB)."
-  - "Unit test (analysis/mesh-review): a finding whose interpretation contains 'you have a 80% risk' receives verdict revise under no-diagnosis."
-  - "Manual QA: upload a file, verify MeshPanel shows correct counts and Oracle badge, click Synthesize, verify paragraph returned."
+  - "Unit test (analysis/mesh-review): reviewAllFindings on standard KB interpretations returns allow for all."
+  - "Unit test (analysis/mesh-review): a finding whose interpretation contains 'you have a 80% risk' receives verdict revise."
+  - "Unit test (MeshViz): NODE_DEFS includes all six agent nodes plus MCP nodes."
+  - "Unit test (MeshViz): EDGE_PAIRS includes the oracle→kb-curator revise edge."
+  - "Manual QA: upload a file with CF credentials set, verify all six agents appear in event log with LLM text, Oracle revise loop visible when triggered, enrichment cards show curator notes."
 
 qa_notes: |
   Inspect DevTools Network tab: POST /api/synthesize payload must contain only
-  aggregate counts, not rsids or genotypes.
+  aggregate counts, not rsids or genotypes. POST /api/mesh-analyze payload
+  must contain only rsids and public KB metadata, never genotypes.
 
 out_of_scope:
   - "Per-finding Oracle badges in the trace or reports views."
-  - "Running WikiMemory or AgentMesh (Node.js) in the browser."
-  - "Streaming the synthesis response."
+  - "Running the orchestrator in the browser."
 
 implementation_skill: null
 
@@ -54,10 +76,16 @@ eval_plan:
   metrics: []
 
 technical_notes: |
-  Oracle imported from src/mesh/oracle.ts directly (avoids node:fs from memory.ts).
-  Standard KB interpretations pass all Oracle checks (no-diagnosis, no-vision).
+  MeshCanvas.tsx maps SSE event types to MeshViz canvas transitions. The
+  applyEvent function handles agent-start, tool-call, tool-result,
+  oracle-ruling (including revise → Oracle→kb-curator edge), agent-text
+  (including ui-polisher), agent-done, pipeline-done, and pipeline-blocked.
+
+  The event log renders all event types including the new LLM-generated
+  agent-text events from kb-curator, cf-synthesizer, and ui-polisher.
+
   /api/synthesize payload: { totals: { parsed, matched, covered },
-    breakdown: Record<category, { A, B, C }> } -- no personal data.
+    breakdown: Record<category, { A, B, C }> } — no personal data.
 
 linked_issues: []
 linked_prs: []

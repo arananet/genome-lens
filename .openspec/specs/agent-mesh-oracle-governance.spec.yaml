@@ -5,7 +5,7 @@ status: review
 
 author: "Eduardo Arana"
 created_at: "2026-06-14"
-updated_at: "2026-06-14"
+updated_at: "2026-06-21"
 
 roles:
   implementer: "@arananet"
@@ -14,22 +14,41 @@ roles:
   product_owner: "@arananet"
 
 description: |
-  A development/governance harness: a mesh of specialized agents that share a
-  Markdown LLM-wiki as memory and are governed by an Oracle which enforces the
-  project's non-negotiable invariants. Every agent action is ruled allow / revise
-  / deny against the charter in wiki/memory/oracle-charter.md before it can be
-  committed. This harness is Node-only tooling — it is never bundled into the
-  browser app and never processes a user's genome; the only shipped wiki content
-  is the glossary.
+  A live agent mesh orchestrated as a server-side SSE pipeline
+  (mesh/orchestrator.mjs). Five LLM-powered agents — each a genuine Cloudflare
+  Workers AI call (@cf/nvidia/nemotron-3-120b-a12b) — are governed by a
+  two-layer Oracle that enforces non-negotiable invariants.
+
+  Pipeline: privacy-warden → kb-curator → Oracle → cf-synthesizer → ui-polisher.
+
+  Layer 1 (deterministic): five regex/structural checks that form the hard floor.
+  These can never be overridden by the LLM layer.
+
+  Layer 2 (LLM governance): reviews all agent-generated text for nuanced
+  violations the regex can't catch (subtle diagnostic phrasing, fabricated
+  statistics, genotype leaks in natural language). Triggers a real
+  revise-and-resubmit loop: the Oracle sends feedback to the originating agent,
+  which re-drafts via a second LLM call; the revision is re-checked against
+  deterministic invariants (max 1 retry, then deny).
+
+  Agent decisions are logged to a Markdown LLM-wiki (wiki/) that serves as
+  shared memory across sessions. The mesh runs server-side only — it is never
+  bundled into the browser app. Only rsids and public KB metadata cross the
+  wire; genotypes never leave the browser.
 
 acceptance_criteria:
-  - "Given a well-formed knowledge-base action (>=1 source + valid tier), when ruled by the Oracle, then the verdict is allow."
+  - "Given a well-formed knowledge-base action (>=1 source + valid tier), when ruled by the Oracle deterministic layer, then the verdict is allow."
   - "Given a knowledge-base action with no sources or an invalid tier, when ruled, then the verdict is deny under the evidence-required invariant."
   - "Given a data-egress action carrying a personal genotype, when ruled, then the verdict is deny under the local-only invariant."
   - "Given report copy containing a personal risk percentage or diagnostic phrasing, when ruled, then the verdict is revise under the no-diagnosis invariant."
   - "Given vision report copy promising eyesight improvement, when ruled, then the verdict is deny under the no-vision-improvement invariant."
+  - "Given CF credentials are configured, when the privacy-warden runs, then it performs both a regex pre-filter AND an LLM privacy audit of the outbound payload."
+  - "Given CF credentials are configured, when the kb-curator fetches variant data, then it also drafts per-variant LLM interpretations via Cloudflare Workers AI."
+  - "Given the Oracle LLM review returns revise for a curator-drafted text, when the revise loop runs, then the kb-curator re-drafts via a second LLM call and the revision is re-checked against deterministic invariants."
+  - "Given a revised text that still violates an invariant after retry, then the finding is denied (max 1 retry)."
+  - "Given the cf-synthesizer produces a narrative, when the ui-polisher runs, then it polishes the text via an LLM call and the result is checked against Oracle invariants before approval."
+  - "Given CF credentials are NOT configured, when the pipeline runs, then it falls back to deterministic-only Oracle and data-only agents (no LLM calls, no crash)."
   - "Given the mesh, when an allowed action is submitted, then it is appended to the wiki decision log; denied actions are not committed."
-  - "Given the WikiMemory store, when reading a glossary page, then front-matter is parsed and the body returned."
   - "Given the browser app bundle, then no agent-mesh / node:fs code is included."
 
 test_plan:
@@ -38,17 +57,23 @@ test_plan:
   - "Unit test (mesh/oracle): denies egress of a personal genotype (local-only)."
   - "Unit test (mesh/oracle): revises risk-percentage / diagnostic report copy (no-diagnosis)."
   - "Unit test (mesh/oracle): denies vision-improvement promises (no-vision-improvement)."
-  - "Unit test (mesh/memory): reads a glossary page with front-matter parsed from a temp wiki."
+  - "Integration test (orchestrator): with CF credentials, pipeline emits agent-start events for all five agents (privacy-warden, kb-curator, oracle, cf-synthesizer, ui-polisher)."
+  - "Integration test (orchestrator): Oracle LLM revise triggers a kb-curator retry and emits revised text event."
+  - "Integration test (orchestrator): without CF credentials, pipeline completes with regex-only Oracle and no LLM errors."
   - "Integration test (mesh): allowed actions are appended to the decision log; denied actions are not."
 
 qa_notes: |
-  The mesh is exercised by automated tests. Manually confirm the production SPA
-  bundle does not import node:fs (build succeeds with DOM-only app code).
+  Deploy to Railway with CF_ACCOUNT_ID and CF_API_TOKEN set. Upload a genome
+  file, observe the SSE event log in the MeshPanel — verify all five agents
+  appear with LLM-generated text (curator notes, synthesis narrative, polished
+  output). Check that the Oracle revise loop fires when curator text contains
+  subtle diagnostic phrasing. Confirm the production SPA bundle does not import
+  node:fs.
 
 out_of_scope:
   - "Running the mesh inside the browser app."
-  - "Any networked multi-agent runtime or remote model calls from the mesh."
   - "Storing genome data in agent memory."
+  - "Multi-turn agent conversations (agents are single-shot LLM calls per pipeline step)."
 
 implementation_skill: null
 
@@ -57,10 +82,20 @@ eval_plan:
   metrics: []
 
 technical_notes: |
-  Oracle invariants are implemented as deterministic checks returning the most
-  severe verdict. Memory is plain Markdown via node:fs; the charter and roster live
-  in wiki/memory/. The mesh is never imported by src/App.tsx, so Vite tree-shakes
+  Oracle invariants (Layer 1) are implemented as deterministic checks in
+  mesh/oracle.mjs returning the most severe verdict. Layer 2 uses cfAiRun()
+  to call Cloudflare Workers AI for nuanced review of agent-generated text.
+  The revise loop sends Oracle feedback to the curator agent, which re-drafts
+  via a second LLM call; the revision is re-checked against Layer 1 only
+  (no recursive LLM review) to prevent infinite loops.
+
+  Memory is plain Markdown via node:fs; the charter and roster live in
+  wiki/memory/. The mesh is never imported by src/App.tsx, so Vite tree-shakes
   it out of the SPA.
+
+  LLM model: @cf/nvidia/nemotron-3-120b-a12b (free tier, 10K neurons/day).
+  Batching: curator drafts interpretations in groups of 15; Oracle LLM reviews
+  all texts in one call. Total LLM calls per pipeline run: ~4-6.
 
 linked_issues: []
 linked_prs: []
