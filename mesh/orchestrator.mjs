@@ -13,8 +13,15 @@
 // Privacy: only rsids + public KB metadata (gene, category, tier) leave the browser.
 // No genotypes, no raw file content, ever.
 
-import { batchLookupVariants, lookupGene } from "./tools.mjs";
+import { batchLookupVariants } from "./tools.mjs";
 import { oracleRule } from "./oracle.mjs";
+import {
+  curatorFetchVariants,
+  curatorFetchGenes,
+  curatorDraftInterpretations,
+  curatorRevise,
+  mcpAvailable,
+} from "./agents/kb-curator.mjs";
 
 const CF_MODEL = "@cf/nvidia/nemotron-3-120b-a12b";
 
@@ -22,7 +29,6 @@ const LOOKUP_BATCH_SIZE   = 200;
 const LOOKUP_CONCURRENCY  = 5;
 const ORACLE_BULK_THRESHOLD = 20;
 const GENE_LOOKUP_CAP = 20;
-const CURATOR_BATCH_SIZE = 15;
 const MAX_REVISE_ATTEMPTS = 1;
 
 async function cfAiRun(accountId, apiToken, messages) {
@@ -92,51 +98,6 @@ async function llmPrivacyAudit(accountId, apiToken, payload) {
   return { safe: true, note: "LLM privacy audit passed" };
 }
 
-// ── LLM-powered curator: draft interpretations from raw data ─────────────────
-
-async function llmCuratorDraft(accountId, apiToken, variantBatch, geneData) {
-  const lines = variantBatch.map(({ rsid, data, gene }) => {
-    const parts = [`${rsid}`];
-    if (gene) parts.push(`gene=${gene}`);
-    if (data.clinvarSignificance) parts.push(`ClinVar: ${data.clinvarSignificance}`);
-    if (data.gnomadAf != null) parts.push(`gnomAD AF: ${data.gnomadAf.toFixed(4)}`);
-    if (data.pharmgkbId) parts.push(`PharmGKB: ${data.pharmgkbId}`);
-    const geneInfo = geneData[gene];
-    if (geneInfo?.summary) parts.push(`gene function: ${geneInfo.summary.slice(0, 120)}`);
-    return parts.join(" · ");
-  });
-
-  const result = await cfAiRun(accountId, apiToken, [
-    {
-      role: "system",
-      content: [
-        "You are a genomics knowledge curator. Given raw database annotations for genetic variants,",
-        "draft brief educational interpretations. For EACH variant listed, write one line in the format:",
-        "RSID: interpretation",
-        "Keep each interpretation to 1-2 sentences. Focus on what the databases report.",
-        "RULES: never diagnose, never state personal risk percentages, never invent statistics,",
-        "never promise treatment or improvement. State associations and evidence quality only.",
-      ].join(" "),
-    },
-    {
-      role: "user",
-      content: `Draft interpretations for these ${lines.length} variants:\n\n${lines.join("\n")}`,
-    },
-  ]);
-
-  if (result.error) return {};
-
-  const notes = {};
-  const text = result.text ?? "";
-  for (const line of text.split("\n")) {
-    const match = line.match(/^(rs\d+)\s*:\s*(.+)/i);
-    if (match) {
-      notes[match[1]] = match[2].trim();
-    }
-  }
-  return notes;
-}
-
 // ── LLM-powered Oracle review ────────────────────────────────────────────────
 
 async function llmOracleReview(accountId, apiToken, agentTexts) {
@@ -181,33 +142,6 @@ async function llmOracleReview(accountId, apiToken, agentTexts) {
     }
   }
   return verdicts;
-}
-
-// ── LLM-powered revise: agent retries with Oracle feedback ───────────────────
-
-async function llmReviseAttempt(accountId, apiToken, rsid, originalText, reviseReason) {
-  const result = await cfAiRun(accountId, apiToken, [
-    {
-      role: "system",
-      content: [
-        "You are a genomics knowledge curator. You previously drafted an interpretation",
-        "for a genetic variant, but the Oracle governance reviewer flagged it.",
-        "Revise your text to address the concern. Keep it educational, 1-2 sentences.",
-        "Never diagnose, never state risk percentages, never promise improvement.",
-      ].join(" "),
-    },
-    {
-      role: "user",
-      content: [
-        `Variant: ${rsid}`,
-        `Your original text: "${originalText}"`,
-        `Oracle feedback: "${reviseReason}"`,
-        `Please provide a revised interpretation:`,
-      ].join("\n"),
-    },
-  ]);
-  if (result.error) return null;
-  return (result.text ?? "").trim() || null;
 }
 
 // ── Main orchestrator ────────────────────────────────────────────────────────
@@ -272,37 +206,40 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
     };
   }
 
-  // ── Step 2: kb-curator — concurrent batched variant + gene lookups ────────
+  // ── Step 2: kb-curator agent — owns MCP tools + LLM interpretation ────────
   const rsids = findingSummaries.map((f) => f.rsid);
   const batchCount = Math.ceil(rsids.length / LOOKUP_BATCH_SIZE);
+  const usingMcp = await mcpAvailable();
 
   yield {
     type: "agent-start",
     agent: "kb-curator",
-    summary: `Querying MyVariant.info for ${rsids.length} variants in ${batchCount} batch${batchCount > 1 ? "es" : ""} (${Math.min(batchCount, LOOKUP_CONCURRENCY)} concurrent)…`,
+    summary: `Querying MyVariant.info via ${usingMcp ? "MCP (biothings-mcp)" : "direct HTTP"} for ${rsids.length} variants in ${batchCount} batch${batchCount > 1 ? "es" : ""} (${Math.min(batchCount, LOOKUP_CONCURRENCY)} concurrent)…`,
   };
 
   yield {
     type: "tool-call",
     agent: "kb-curator",
-    tool: "batch_lookup_variants",
+    tool: usingMcp ? "mcp:biothings_query_many_variants" : "http:myvariant.info/v1/variant",
     input: {
       rsids: rsids.length <= 6 ? rsids.join(",") : `${rsids.length} rsids`,
       fields: "clinvar,gnomad.af,pharmgkb,dbsnp.gene",
+      transport: usingMcp ? "MCP (stdio)" : "HTTP POST",
     },
   };
 
-  const variantData = await concurrentBatchLookup(rsids);
+  // Curator agent fetches variant data using its own MCP tools (or HTTP fallback)
+  const variantData = await curatorFetchVariants(rsids, concurrentBatchLookup);
   const found = Object.values(variantData).filter((v) => v && !v.notFound).length;
 
   yield {
     type: "tool-result",
     agent: "kb-curator",
-    tool: "batch_lookup_variants",
+    tool: usingMcp ? "mcp:biothings_query_many_variants" : "http:myvariant.info/v1/variant",
     result: { fetched: rsids.length, found },
   };
 
-  // Gene lookups
+  // Curator agent fetches gene data using its own MCP tools (or HTTP fallback)
   const geneSymbols = [
     ...new Set(
       findingSummaries
@@ -316,37 +253,34 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
     ),
   ].slice(0, GENE_LOOKUP_CAP);
 
-  const geneData = {};
+  let geneData = {};
   if (geneSymbols.length > 0) {
     yield {
       type: "tool-call",
       agent: "kb-curator",
-      tool: "lookup_gene",
-      input: { symbols: geneSymbols.join(","), count: geneSymbols.length },
+      tool: usingMcp ? "mcp:biothings_query_genes" : "http:mygene.info/v3/query",
+      input: {
+        symbols: geneSymbols.join(","),
+        count: geneSymbols.length,
+        transport: usingMcp ? "MCP (stdio)" : "HTTP GET",
+      },
     };
 
-    const geneResults = await Promise.all(
-      geneSymbols.map(async (symbol) => ({ symbol, result: await lookupGene(symbol) })),
-    );
-    for (const { symbol, result } of geneResults) {
-      geneData[symbol] = result;
-    }
+    const geneResult = await curatorFetchGenes(geneSymbols);
+    geneData = geneResult.geneData;
 
     yield {
       type: "tool-result",
       agent: "kb-curator",
-      tool: "lookup_gene",
-      result: {
-        fetched: geneSymbols.length,
-        found: geneResults.filter((g) => g.result).length,
-      },
+      tool: usingMcp ? "mcp:biothings_query_genes" : "http:mygene.info/v3/query",
+      result: { fetched: geneSymbols.length, found: geneResult.found },
     };
   }
 
   const toolCalls = 1 + (geneSymbols.length > 0 ? 1 : 0);
 
-  // ── Step 2b: kb-curator LLM — draft interpretations from raw data ─────────
-  const curatorNotes = {};
+  // Curator agent drafts LLM interpretations from its own fetched data
+  let curatorNotes = {};
   if (hasCF && found > 0) {
     const annotatedVariants = rsids
       .filter((rsid) => variantData[rsid] && !variantData[rsid].notFound)
@@ -356,21 +290,13 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
         gene: findingSummaries.find((f) => f.rsid === rsid)?.gene ?? "",
       }));
 
-    const curatorBatches = [];
-    for (let i = 0; i < annotatedVariants.length; i += CURATOR_BATCH_SIZE) {
-      curatorBatches.push(annotatedVariants.slice(i, i + CURATOR_BATCH_SIZE));
-    }
-
     yield {
       type: "agent-text",
       agent: "kb-curator",
-      text: `Drafting LLM interpretations for ${annotatedVariants.length} variants in ${curatorBatches.length} batch${curatorBatches.length > 1 ? "es" : ""}…`,
+      text: `Drafting LLM interpretations for ${annotatedVariants.length} variants…`,
     };
 
-    for (const batch of curatorBatches) {
-      const notes = await llmCuratorDraft(accountId, apiToken, batch, geneData);
-      Object.assign(curatorNotes, notes);
-    }
+    curatorNotes = await curatorDraftInterpretations(accountId, apiToken, cfAiRun, annotatedVariants, geneData);
 
     yield {
       type: "agent-text",
@@ -382,7 +308,7 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
   yield {
     type: "agent-done",
     agent: "kb-curator",
-    summary: `${toolCalls} MCP call${toolCalls > 1 ? "s" : ""} — ${found}/${rsids.length} variants annotated · ${Object.keys(geneData).length} genes fetched · ${Object.keys(curatorNotes).length} LLM interpretations`,
+    summary: `${toolCalls} ${usingMcp ? "MCP" : "HTTP"} call${toolCalls > 1 ? "s" : ""} — ${found}/${rsids.length} variants annotated · ${Object.keys(geneData).length} genes fetched · ${Object.keys(curatorNotes).length} LLM interpretations`,
   };
 
   // ── Step 3: Oracle — deterministic invariants + LLM review + revise loop ──
@@ -467,8 +393,8 @@ export async function* orchestrateMeshAnalysis(findingSummaries) {
             reason: `LLM: ${v.reason}`,
           };
 
-          // Real revise loop: send feedback to curator agent, let it retry
-          const revised = await llmReviseAttempt(accountId, apiToken, v.rsid, curatorNotes[v.rsid], v.reason);
+          // Real revise loop: delegate to curator agent to re-draft
+          const revised = await curatorRevise(accountId, apiToken, cfAiRun, v.rsid, curatorNotes[v.rsid], v.reason);
           if (revised) {
             // Re-check revised text with regex invariants
             const recheck = oracleRule({

@@ -1,0 +1,101 @@
+title: "Genome databases via MCP — biothings-mcp integration"
+slug: "genome-databases-mcp"
+type: feature
+status: review
+
+author: "Claude"
+created_at: "2026-06-21"
+updated_at: "2026-06-21"
+
+roles:
+  implementer: "@arananet"
+  reviewer: "@arananet"
+  qa: "@arananet"
+  product_owner: "@arananet"
+
+description: |
+  Real MCP (Model Context Protocol) integration for genomics database queries.
+  The kb-curator agent's variant and gene lookups now go through biothings-mcp
+  via @modelcontextprotocol/sdk's StdioClientTransport, with automatic fallback
+  to direct HTTP if the MCP server isn't available.
+
+  Architecture:
+    mesh/mcp-client.mjs — singleton MCP client that lazily spawns biothings-mcp
+    via `uvx biothings-mcp` (stdio transport). Provides mcpBatchLookupVariants()
+    and mcpLookupGene() that call biothings_query_many_variants and
+    biothings_query_genes MCP tools respectively. Returns null on any failure
+    so callers can fall back to direct HTTP.
+
+    mesh/tools.mjs — batchLookupVariants() and lookupGene() now try MCP first,
+    then fall back to direct HTTP (safeFetch to myvariant.info / mygene.info).
+    Full-genome ClinVar pathogenic scan (scanVariantsForPathogenic) always uses
+    direct HTTP — the MCP overhead isn't justified for 600K+ rsid bulk batching.
+
+  The orchestrator event log reports which transport is active ("MCP (biothings-mcp)"
+  or "direct HTTP") so the MeshPanel UI shows the real data path.
+
+acceptance_criteria:
+  - "Given uvx and biothings-mcp are available, when batchLookupVariants is called, then it uses biothings_query_many_variants via MCP stdio transport."
+  - "Given uvx and biothings-mcp are available, when lookupGene is called, then it uses biothings_query_genes via MCP stdio transport."
+  - "Given uvx is NOT available (e.g. Railway without Python), when batchLookupVariants is called, then it falls back to direct HTTP POST to myvariant.info."
+  - "Given uvx is NOT available, when lookupGene is called, then it falls back to direct HTTP GET to mygene.info."
+  - "Given the MCP server is spawned, when it fails mid-session (process crash), then subsequent calls return null and the HTTP fallback activates."
+  - "Given the orchestrator runs with MCP available, when the kb-curator agent starts, then the event log reports 'via MCP (biothings-mcp)' in the agent-start summary."
+  - "Given the orchestrator runs without MCP, when the kb-curator agent starts, then the event log reports 'via direct HTTP'."
+  - "Given the server shuts down (SIGTERM/SIGINT), then the MCP client transport is closed cleanly."
+  - "Given the full-genome ClinVar scan runs, then it always uses direct HTTP regardless of MCP availability (bulk batching, not MCP)."
+  - "Given the browser SPA bundle, then no MCP client or @modelcontextprotocol/sdk code is included."
+
+test_plan:
+  - "Unit test: mock StdioClientTransport — mcpBatchLookupVariants returns enrichment map for valid response."
+  - "Unit test: mock StdioClientTransport spawn failure — mcpBatchLookupVariants returns null, batchLookupVariants falls through to HTTP."
+  - "Unit test: mock StdioClientTransport — mcpLookupGene returns { symbol, name, summary } for valid response."
+  - "Unit test: mcpAvailable returns false when biothings-mcp spawn fails."
+  - "Integration test: with uvx available, batchLookupVariants(['rs429358']) returns a non-null map (real MCP call)."
+  - "Integration test: Vite production build excludes @modelcontextprotocol/sdk from the browser bundle."
+
+qa_notes: |
+  Manual QA: run `node server.mjs` locally with uvx installed. Upload a genome file.
+  In the MeshPanel event log, verify:
+  - kb-curator agent-start says "via MCP (biothings-mcp)"
+  - tool-call events show "mcp:biothings_query_many_variants" and "mcp:biothings_query_genes"
+  Then uninstall uvx or rename it, restart the server, and verify:
+  - kb-curator agent-start says "via direct HTTP"
+  - tool-call events show "http:myvariant.info/v1/variant"
+  Deploy to Railway (no Python/uvx) and verify the HTTP fallback works in production.
+
+out_of_scope:
+  - "Running MCP servers in production on Railway (requires Python runtime)."
+  - "Using MCP for the full-genome ClinVar scan (too many rsids for MCP overhead)."
+  - "The LLM deciding when to call MCP tools (tools are called deterministically by the orchestrator)."
+  - "Other MCP servers beyond biothings-mcp (gget-mcp, opengenes-mcp, synergy-age-mcp are dev-only)."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  biothings-mcp (PyPI: biothings-mcp) is a FastMCP 3.x server wrapping the
+  BioThings API suite (MyVariant.info, MyGene.info, MyDisease.info, MyChem.info).
+  It runs as a stdio MCP server spawned via `uvx biothings-mcp`.
+
+  MCP tools used:
+    biothings_query_many_variants — batch variant lookup by rsid
+      params: query_list (comma-separated rsids), scopes ("dbsnp.rsid"),
+      fields (clinvar, gnomad, pharmgkb, dbsnp.gene)
+    biothings_query_genes — gene search by symbol
+      params: q ("symbol:APOE"), fields ("name,summary"), species ("human"),
+      size (1)
+
+  @modelcontextprotocol/sdk v1.29+ provides Client and StdioClientTransport.
+  The client is a lazy singleton — spawned on first use, reused across requests.
+  If the spawn fails (no uvx, no Python, network policy), _failed is set true
+  and all subsequent calls return null immediately (no repeated spawn attempts).
+
+  Privacy: MCP tool calls transmit only rsids and gene symbols — the same
+  data that the direct HTTP path transmits. No genotypes, no raw genome data.
+
+linked_issues: []
+linked_prs: []

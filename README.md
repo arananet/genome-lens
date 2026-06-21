@@ -27,8 +27,12 @@ report into an honest, private, navigable view of what is known and what is not:
 - **2D trace browser** — manhattan overview + per-chromosome linear tracks.
 - **3D karyotype** — idiogram bars with centromere constrictions, interactive
   markers, and a detail panel. Rendered with three.js / React Three Fiber.
-- **Agent mesh visualization** — animated Canvas 2D pipeline showing data flow
-  through parser, KB curator, MCP servers, privacy warden, and Oracle.
+- **Agent mesh** — five LLM-powered agents (Cloudflare Workers AI) orchestrated
+  via SSE with a two-layer Oracle (deterministic invariants + LLM governance
+  review + real revise loop). MCP enrichment via biothings-mcp
+  (@modelcontextprotocol/sdk, stdio transport, HTTP fallback) from
+  MyVariant.info, MyGene.info, plus full-genome ClinVar pathogenic scan.
+  Live Canvas 2D visualization.
 - **Four tiered reports** — health/disease, fitness, body composition, vision.
 - **Clinical report export** — printable/PDF findings report grouped by category
   with tier chips, caveats, and evidence legend.
@@ -116,7 +120,9 @@ Wrangler and point the SPA at it via `VITE_AI_WORKER_URL`. See
 
 ### Data pipeline (runtime)
 
-Every genome analysis runs entirely in your browser — no upload ever occurs.
+Every genome analysis starts in your browser — parsing and genotype handling
+happen locally. The server-side agent mesh enriches findings via real database
+APIs and LLM reasoning, but **only rsids and public KB metadata cross the wire**.
 
 ```mermaid
 flowchart LR
@@ -126,101 +132,126 @@ flowchart LR
         PARSE[parser-smith\nparse + normalise]
         HR[GWAS health report\nparser]
         KB[kb-curator\nmatch knowledge base]
-        ORACLE_B[Oracle\nreview each finding]
-        UI[ui-polisher\nrender trace / reports]
-        REPORT[Clinical report\nPDF export]
-        EXPLAIN[AI Explainer\nopt-in per variant]
+        STORE[Zustand store\nmerge all sources]
+        UI[Trace / Karyotype 3D\nReport views]
     end
 
-    subgraph server["Railway Express server"]
-        API_EXPLAIN[POST /api/explain]
-        API_SYNTH[POST /api/synthesize]
-        API_PHENO[POST /api/phenotype-rank]
-        CF[Cloudflare Workers AI\n@cf/nvidia/nemotron-3-120b-a12b]
+    subgraph mesh["Server — Agent Mesh (SSE)"]
+        PW["🔒 privacy-warden\nregex + LLM audit"]
+        subgraph curator["📚 kb-curator agent"]
+            KC["LLM interpret"]
+            MV["MCP: myvariant\n(biothings-mcp)"]
+            MG["MCP: mygene\n(biothings-mcp)"]
+        end
+        ORC["◈ Oracle\ninvariants + LLM review\nrevise loop"]
+        CF["✦ cf-synthesizer\nLLM narrative"]
+        UP["✨ ui-polisher\nLLM copy polish"]
+    end
+
+    subgraph scan["ClinVar Pathogenic Scan"]
+        CV[direct HTTP\n600K+ rsids]
+    end
+
+    subgraph ai["Cloudflare Workers AI"]
+        LLM["@cf/nvidia/nemotron-3-120b-a12b"]
     end
 
     FILE -->|local parse| DETECT
     DETECT -->|23andMe / Ancestry\nMyHeritage / VCF| PARSE
     DETECT -->|GWAS health report| HR
     PARSE -->|variants| KB
-    KB -->|findings| ORACLE_B
-    ORACLE_B -->|allow / revise| UI
-    HR -->|elevated / reduced\npharma / biomarkers| REPORT
-    UI -->|single variant context\nrsid, gene, public KB note| EXPLAIN
-    UI --> REPORT
-    EXPLAIN -->|opt-in POST| API_EXPLAIN
-    API_EXPLAIN --> CF
-    UI -->|aggregate counts only\nno rsids, no genotypes| API_SYNTH
-    API_SYNTH --> CF
-    UI -->|phenotype + finding summaries| API_PHENO
-    API_PHENO --> CF
+    KB -->|rsids only| PW
+    PW -->|approved| curator
+    KC -->|enriched findings| ORC
+    ORC -->|revise| KC
+    ORC -->|approved| CF
+    CF --> UP
+    UP -->|SSE stream| STORE
+    MV & MG -.->|MCP stdio\nor HTTP fallback| KC
+    PARSE -->|all rsids| CV
+    CV -->|pathogenic hits| STORE
+    STORE --> UI
+    PW & KC & ORC & CF & UP --> LLM
 ```
 
-**Privacy invariant**: the raw genome file and individual genotypes never leave the browser. The server receives only (a) single-variant public-KB context when you click *Explain* (opt-in), (b) aggregate category counts for *Synthesize*, or (c) finding summaries (rsid, gene, category — no raw genotypes) for *Phenotype Rank*.
+**Privacy invariant**: the raw genome file and individual genotypes never leave the browser. The mesh receives only rsids + public KB metadata (gene, category, tier). The `/api/mesh-analyze` endpoint rejects any payload item containing a `genotype` field.
 
 ---
 
-### Agent mesh, Oracle & LLM-wiki
+### Agent mesh — five LLM agents + two-layer Oracle
 
-The **agent mesh** is the development governance layer. It coordinates five specialised agents under a rule-based **Oracle** that enforces non-negotiable invariants. All agent decisions are logged to a Markdown **LLM-wiki** that doubles as shared memory across sessions.
+The **agent mesh** is not a label — every agent is a genuine LLM call through
+Cloudflare Workers AI (`@cf/nvidia/nemotron-3-120b-a12b`), orchestrated as an
+SSE pipeline with real-time event streaming to the browser canvas.
 
 ```mermaid
 flowchart TD
-    subgraph agents["Agent Mesh"]
-        PS[⚙ parser-smith\nparse & normalise DNA files]
-        KC[📚 kb-curator\ncurate knowledge-base entries]
-        PW[🔒 privacy-warden\nenforce data-egress rules]
-        UP[✦ ui-polisher\nwrite user-facing copy]
-        GS[📖 glossary-scribe\nmaintain wiki glossary]
+    subgraph pipeline["Server-side SSE pipeline (mesh/orchestrator.mjs)"]
+        PW["🔒 privacy-warden\n1. Regex pre-filter\n2. LLM privacy audit"]
+        subgraph kc_agent["📚 kb-curator agent"]
+            KC_MCP["MCP tools\nbiothings-mcp\n(HTTP fallback)"]
+            KC_LLM["LLM drafts\ninterpretations"]
+        end
+        ORC_REG["◈ Oracle — Layer 1\nDeterministic invariants\n(hard floor, never overridden)"]
+        ORC_LLM["◈ Oracle — Layer 2\nLLM governance review\n(catches nuanced violations)"]
+        REVISE{"revise?"}
+        CF["✦ cf-synthesizer\nLLM narrative synthesis\nfrom enriched data"]
+        UP["✨ ui-polisher\nLLM copy polish\ngrade-10 reading level"]
     end
 
-    subgraph oracle["Oracle (src/mesh/oracle.ts)"]
-        INV["Invariants\n• local-only genome\n• evidence-tiered claims\n• educational-not-diagnostic\n• imputation-honest\n• no vision-improvement claims"]
-        RULE{rule\nagent action}
-        ALLOW([allow])
-        REVISE([revise])
-        DENY([deny])
-    end
-
-    subgraph wiki["LLM-wiki (wiki/)"]
-        GLOSSARY[wiki/glossary/\nMarkdown term definitions\nbundled into SPA at build time]
-        MEMORY[wiki/memory/\ndecisions.md — Oracle log\noracle-charter.md — invariants\nagents.md — role registry]
-    end
-
-    PS & KC & PW & UP & GS -->|AgentAction| RULE
-    RULE --> INV
-    INV --> ALLOW & REVISE & DENY
-    ALLOW -->|appendDecision\nagent + kind only| MEMORY
-    DENY & REVISE -->|blocked, not logged| agents
-
-    GLOSSARY -.->|import.meta.glob at build| SPA([Browser SPA])
-    MEMORY -.->|volume persisted\non Railway| VOL[(Railway volume\n/data)]
+    PW -->|allow| KC_MCP
+    PW -->|deny| BLOCK([pipeline blocked])
+    KC_MCP --> KC_LLM
+    KC_LLM --> ORC_REG
+    ORC_REG -->|deny| DROP([finding dropped])
+    ORC_REG -->|pass| ORC_LLM
+    ORC_LLM -->|allow| CF
+    ORC_LLM -->|deny| DROP
+    ORC_LLM -->|revise| REVISE
+    REVISE -->|max 1 retry| KC_LLM
+    KC_LLM -->|re-check| ORC_REG
+    CF --> UP
+    UP -->|Oracle invariant check| DONE([pipeline done])
 ```
 
-#### Agent roles
+#### Agent roles — each is a real LLM call
 
-| Agent | Role | Key invariant guarded |
+| Agent | What it does | LLM call |
 |---|---|---|
-| `parser-smith` | Parse DNA files, normalise strands | Never modifies raw data |
-| `kb-curator` | Curate KB entries with sources | Every claim must cite a real source |
-| `privacy-warden` | Gate data-egress actions | No bulk genome upload |
-| `ui-polisher` | Write user-facing copy | No diagnostic phrasing, no risk% |
-| `glossary-scribe` | Maintain `wiki/glossary/` | Educational tone only |
+| `privacy-warden` | Regex pre-filter + LLM audit of the outbound payload for subtle privacy leaks | Reviews payload text for genotype patterns, PII, health records |
+| `kb-curator` | Owns MCP tools (biothings-mcp via @modelcontextprotocol/sdk, HTTP fallback): fetches from MyVariant.info + MyGene.info, then drafts per-variant interpretations | Generates 1-2 sentence educational interpretation from raw ClinVar/gnomAD/PharmGKB data |
+| `Oracle` | Two-layer review: deterministic regex invariants (hard floor) + LLM governance review with real revise-and-resubmit loop | Reviews all curator-drafted text against invariants, returns ALLOW/REVISE/DENY per finding |
+| `cf-synthesizer` | Drafts a narrative overview from the approved enrichment data | 2-3 paragraph synthesis referencing actual ClinVar classifications and allele frequencies |
+| `ui-polisher` | Polishes the synthesizer output for clarity and reading level | Rewrites for grade-10 readability, removes unexplained jargon, ensures educational tone |
 
-#### Oracle invariants (enforced on every agent action)
+#### Oracle — two-layer governance with real revise loop
 
-1. **local-only** — no action may transmit the raw genome file
-2. **evidence-tiered** — every KB claim must have ≥1 cited source
-3. **educational-not-diagnostic** — no diagnostic language or risk percentages
-4. **imputation-honest** — low-pass / no-call status must be surfaced
-5. **no-vision-improvement** — no claims about improving eyesight
+The Oracle is not a single check — it operates in two layers:
+
+1. **Deterministic invariants** (`mesh/oracle.mjs`) — five structural/regex checks
+   that form the hard floor. These can never be overridden by the LLM layer:
+   - **local-only** — no action may transmit the raw genome
+   - **evidence-required** — every KB claim must cite ≥1 real source
+   - **no-diagnosis** — no diagnostic language or personal risk percentages
+   - **imputation-honesty** — inferred calls must not be presented as measured
+   - **no-vision-improvement** — no promises about improving eyesight
+
+2. **LLM governance review** — reviews all agent-generated text for nuanced
+   violations the regex can't catch (subtle diagnostic phrasing, fabricated
+   statistics, genotype leaks in natural language). When it flags a finding:
+   - `revise` → sends the reason back to `kb-curator`, which re-drafts via a
+     second LLM call, then the revision is re-checked against the deterministic
+     invariants (max 1 retry, then deny)
+   - `deny` → finding is dropped from approved enrichments
+
+The LLM layer can only escalate (revise → deny), never override a deterministic deny.
 
 #### What is stored where
 
 | Layer | Data | Persistent? |
 |---|---|---|
 | Browser memory | Full genome (session only) | No — cleared on page close |
-| Browser IndexedDB | Nothing (removed — no user auth) | No |
+| Browser IndexedDB | Nothing (no user auth) | No |
 | Railway volume `/data/wiki/` | Static glossary + Oracle log (agent+kind only) | Yes — no genomic data |
 | Railway volume `/data/cache/synth/` | AI synthesis text (no counts, no rsids) | Yes — no genomic data |
 

@@ -1,5 +1,6 @@
 // Maps knowledge-base source database names to their MCP server and tool.
-// These are the holy-bio-mcp servers configured in .claude/settings.json.
+// biothings-mcp is used at runtime via @modelcontextprotocol/sdk (mesh/mcp-client.mjs).
+// Other servers are configured in .claude/settings.json for development use.
 
 export interface McpToolRef {
   server: string;       // e.g. "biothings-mcp"

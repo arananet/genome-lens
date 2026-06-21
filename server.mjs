@@ -17,7 +17,7 @@ import {
   readGlossaryPage,
 } from "./storage.mjs";
 import { orchestrateMeshAnalysis } from "./mesh/orchestrator.mjs";
-import { scanVariantsForPathogenic } from "./mesh/tools.mjs";
+import { scanVariantsForPathogenic, closeMcpClient } from "./mesh/tools.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ?? 3000;
@@ -281,7 +281,16 @@ app.get("*", (_req, res) => {
   res.sendFile(join(__dirname, "dist", "index.html"));
 });
 
-app.listen(PORT, () => console.log(`genome-lens on :${PORT}`));
+const server = app.listen(PORT, () => console.log(`genome-lens on :${PORT}`));
+
+process.on("SIGTERM", async () => {
+  await closeMcpClient();
+  server.close();
+});
+process.on("SIGINT", async () => {
+  await closeMcpClient();
+  server.close();
+});
 
 // ── Cloudflare Workers AI helper ──────────────────────────────────────────────
 
